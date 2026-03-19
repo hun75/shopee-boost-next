@@ -10,6 +10,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const data = await db.getCountryData(country);
+    // 안전장치: 등록 상품 0개인데 활성이면 자동 비활성화
+    if (data.isActive && data.boostedItems.length === 0) {
+      await db.setBoostActive(country, false);
+      data.isActive = false;
+    }
     return NextResponse.json(data);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -62,6 +62,12 @@ export async function POST(req: NextRequest) {
         // 부스트 해제
         await db.removeItem(country, itemId);
         await db.addLog(country, itemId, 'unboost', 'success', `해제: ${itemName?.slice(0, 20)}`);
+        // 등록 상품이 0개면 부스트 사이클 자동 중지
+        const remainingItems = await db.getItemsByCountry(country);
+        if (remainingItems.length === 0) {
+          await db.setBoostActive(country, false);
+          await db.addLog(country, '', 'auto_stop', 'success', '등록 상품 0개 → 자동 정지');
+        }
         return NextResponse.json({ success: true });
       }
 

@@ -255,18 +255,16 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-              {totalReg > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#fff', border: '1px solid #eee', borderRadius: 8, marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#fff', border: '1px solid #eee', borderRadius: 8, marginBottom: 12 }}>
                   <div style={{ fontSize: 13 }}>
-                    {data?.isActive ? <span>🟢 <b>부스트 활성</b> · {totalReg}개 · 마지막: {toKST(data?.lastBoost)}</span> : <span>⏸️ <b>부스트 비활성</b> · {totalReg}개</span>}
+                    {data?.isActive ? <span>🟢 <b>부스트 활성</b> · {totalReg}개 · 마지막: {toKST(data?.lastBoost)}</span> : <span>⏸️ <b>부스트 비활성</b>{totalReg > 0 ? ` · ${totalReg}개` : ''}</span>}
                   </div>
                   {!data?.isActive ? (
-                    <button onClick={() => act('start', { itemIds: data?.boostedItems?.map(i => i.item_id) })} style={{ padding: '8px 20px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>🚀 부스트 시작</button>
+                    <button onClick={() => act('start', { itemIds: data?.boostedItems?.map(i => i.item_id) })} disabled={totalReg === 0} style={{ padding: '8px 20px', background: totalReg === 0 ? '#ccc' : '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: totalReg === 0 ? 'not-allowed' : 'pointer' }}>🚀 부스트 시작</button>
                   ) : (
                     <button onClick={() => act('stop')} style={{ padding: '8px 20px', background: '#666', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>⏹ 부스트 정지</button>
                   )}
                 </div>
-              )}
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <input type="text" placeholder="상품명, 상품ID 검색..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 3, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, outline: 'none' }} />
                 <select value={sort} onChange={e => setSort(e.target.value)} style={{ flex: 1, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}>

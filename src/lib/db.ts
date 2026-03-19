@@ -113,7 +113,12 @@ export async function saveProductsCache(country: string, products: any[]) {
 
 export async function loadProductsCache(country: string): Promise<any[]> {
   const { data } = await supabase.from('products_cache').select('products').eq('country', country).single();
-  return data?.products || [];
+  let products = data?.products || [];
+  // Supabase에서 문자열로 저장된 경우 파싱
+  if (typeof products === 'string') {
+    try { products = JSON.parse(products); } catch { products = []; }
+  }
+  return Array.isArray(products) ? products : [];
 }
 
 // ─── 국가별 전체 데이터 (한 번에 로드) ───

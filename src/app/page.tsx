@@ -20,7 +20,6 @@ function toKST(s: string | null) {
   if (!s) return '없음';
   try {
     const d = new Date(s);
-    // UTC 기준 +9시간 = KST
     const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
     return `${String(kst.getUTCMonth()+1).padStart(2,'0')}/${String(kst.getUTCDate()).padStart(2,'0')} ${String(kst.getUTCHours()).padStart(2,'0')}:${String(kst.getUTCMinutes()).padStart(2,'0')}`;
   } catch { return s.slice(0, 16); }
@@ -31,7 +30,54 @@ interface BoostedItem { item_id: string; item_name: string; status: string; }
 interface CountryData { products: Product[]; boostedItems: BoostedItem[]; counts: { Active: number; Waiting: number }; isActive: boolean; lastBoost: string | null; }
 interface LogEntry { action: string; item_id: string; result: string; message: string; created_at: string; }
 
+// ═══ 로그인 화면 ═══
+function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [id, setId] = useState('');
+  const [pw, setPw] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setLoading(true); setError('');
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, password: pw }),
+      });
+      const j = await r.json();
+      if (j.success) onLogin();
+      else setError(j.error || '로그인 실패');
+    } catch { setError('서버 오류'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 40, width: 380, boxShadow: '0 4px 24px rgba(0,0,0,0.1)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <span style={{ fontSize: 48 }}>🤖</span>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#333', marginTop: 8 }}>쇼피 에이전트</h1>
+          <p style={{ fontSize: 13, color: '#999' }}>관리자 로그인</p>
+        </div>
+        {error && <div style={{ padding: '8px 12px', background: '#fee', color: '#c00', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+        <input type="text" placeholder="아이디" value={id} onChange={e => setId(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          style={{ width: '100%', padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 10, outline: 'none', boxSizing: 'border-box' }} />
+        <input type="password" placeholder="비밀번호" value={pw} onChange={e => setPw(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          style={{ width: '100%', padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 16, outline: 'none', boxSizing: 'border-box' }} />
+        <button onClick={submit} disabled={loading}
+          style={{ width: '100%', padding: '12px', background: '#EE4D2D', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+          {loading ? '로그인 중...' : '🔐 로그인'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══ 메인 대시보드 ═══
 export default function Dashboard() {
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [sel, setSel] = useState('TW');
   const [data, setData] = useState<CountryData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -39,18 +85,19 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('name');
-  const [auth, setAuth] = useState<any>({ authenticated: false, tokens: {} });
+  const [auth, setAuth] = useState<any>({ authenticated: false, countries: {} });
   const [showLogs, setShowLogs] = useState(false);
   const [allItems, setAllItems] = useState<BoostedItem[]>([]);
   const [replaceTarget, setReplaceTarget] = useState<{ itemId: string; itemName: string } | null>(null);
 
+  // 세션 확인
+  useEffect(() => {
+    fetch('/api/auth/login').then(r => r.json()).then(j => setLoggedIn(j.authenticated)).catch(() => setLoggedIn(false));
+  }, []);
+
   const load = useCallback(async (c: string) => {
     setLoading(true);
-    try {
-      const r = await fetch(`/api/shopee/items?country=${c}`);
-      const j = await r.json();
-      if (!j.error) setData(j);
-    } catch {} finally { setLoading(false); }
+    try { const r = await fetch(`/api/shopee/items?country=${c}`); const j = await r.json(); if (!j.error) setData(j); } catch {} finally { setLoading(false); }
   }, []);
 
   const loadLogs = useCallback(async (c: string) => {
@@ -61,47 +108,41 @@ export default function Dashboard() {
     try { const r = await fetch('/api/shopee/boost?action=allItems'); setAllItems(await r.json() || []); } catch {}
   }, []);
 
-  useEffect(() => { fetch('/api/shopee/auth', { method: 'POST' }).then(r => r.json()).then(setAuth).catch(() => {}); loadAll(); }, [loadAll]);
-  useEffect(() => { load(sel); }, [sel, load]);
+  useEffect(() => { if (loggedIn) { fetch('/api/shopee/auth', { method: 'POST' }).then(r => r.json()).then(setAuth).catch(() => {}); loadAll(); } }, [loggedIn, loadAll]);
+  useEffect(() => { if (loggedIn) load(sel); }, [sel, loggedIn, load]);
 
   const sync = async () => {
     setSyncing(true);
-    try {
-      await fetch(`/api/shopee/items?country=${sel}`, { method: 'POST' });
-      await load(sel);
-    } catch (e: any) { alert(`❌ ${e.message}`); }
-    finally { setSyncing(false); }
+    try { await fetch(`/api/shopee/items?country=${sel}`, { method: 'POST' }); await load(sel); }
+    catch (e: any) { alert(`❌ ${e.message}`); } finally { setSyncing(false); }
   };
 
   const act = async (action: string, extra: any = {}) => {
-    const r = await fetch('/api/shopee/boost', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, country: sel, ...extra }),
-    });
-    const j = await r.json();
-    if (j.error) { alert(`❌ ${j.error}`); return; }
-    await load(sel);
-    await loadAll();
+    const r = await fetch('/api/shopee/boost', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, country: sel, ...extra }) });
+    const j = await r.json(); if (j.error) { alert(`❌ ${j.error}`); return; }
+    await load(sel); await loadAll();
   };
 
-  const doAuth = async () => {
-    const r = await fetch('/api/shopee/auth');
-    const j = await r.json();
-    if (j.authUrl) window.location.href = j.authUrl;
-  };
+  const doAuth = async () => { const r = await fetch('/api/shopee/auth'); const j = await r.json(); if (j.authUrl) window.location.href = j.authUrl; };
 
+  const handleLogout = async () => { await fetch('/api/auth/logout', { method: 'POST' }); setLoggedIn(false); };
+
+  // 로딩 중
+  if (loggedIn === null) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}><p style={{ color: '#999' }}>로딩 중...</p></div>;
+
+  // 로그인 안 됨
+  if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} />;
+
+  // ── 대시보드 ──
   const boostedIds = new Set(data?.boostedItems?.map(i => i.item_id) || []);
   const totalReg = (data?.counts?.Active || 0) + (data?.counts?.Waiting || 0);
   const remaining = MAX_SLOTS - totalReg;
   const synced = data?.products?.length || 0;
-
-  // 전체 통계
   const totalActive = allItems.filter(i => i.status === 'Active').length;
   const totalWaiting = allItems.filter(i => i.status === 'Waiting').length;
-
-  // auth
   const hasAuth = auth.authenticated || false;
   const countryAuth = auth.countries || {};
+  const cc = CC[sel];
 
   let filtered = data?.products || [];
   if (search) { const q = search.toLowerCase(); filtered = filtered.filter(p => p.item_name.toLowerCase().includes(q) || p.item_id.includes(q)); }
@@ -109,151 +150,82 @@ export default function Dashboard() {
   else if (sort === 'stock') filtered = [...filtered].sort((a, b) => (b.stock || 0) - (a.stock || 0));
   else filtered = [...filtered].sort((a, b) => a.item_name.localeCompare(b.item_name));
 
-  const cc = CC[sel];
-
-  // 교체 모달
-  const ReplaceModal = () => {
-    if (!replaceTarget) return null;
-    const currentItems = data?.boostedItems || [];
-    return (
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        onClick={() => setReplaceTarget(null)}>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 480, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
-          onClick={e => e.stopPropagation()}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>🔄 부스트 상품 교체</h3>
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>새 상품: <b>{replaceTarget.itemName.slice(0, 40)}</b></p>
-          <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
-          <p style={{ fontSize: 13, color: '#999', marginBottom: 12 }}>교체할 기존 상품 선택:</p>
-          {currentItems.map(it => (
-            <div key={it.item_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{it.item_name.slice(0, 30)}</div>
-                <div style={{ fontSize: 11, color: '#999' }}>{it.status}</div>
-              </div>
-              <button onClick={async () => {
-                await act('replace', { oldItemId: it.item_id, itemId: replaceTarget.itemId, itemName: replaceTarget.itemName });
-                setReplaceTarget(null);
-              }} style={{ padding: '6px 14px', background: '#EE4D2D', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                이것과 교체
-              </button>
-            </div>
-          ))}
-          <button onClick={() => setReplaceTarget(null)} style={{ marginTop: 16, width: '100%', padding: '8px', background: '#f0f0f0', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
-            취소
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f8f9fa' }}>
+      {/* 교체 모달 */}
+      {replaceTarget && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setReplaceTarget(null)}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 480, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>🔄 부스트 상품 교체</h3>
+            <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>새 상품: <b>{replaceTarget.itemName.slice(0, 40)}</b></p>
+            <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
+            <p style={{ fontSize: 13, color: '#999', marginBottom: 12 }}>교체할 기존 상품 선택:</p>
+            {(data?.boostedItems || []).map(it => (
+              <div key={it.item_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{it.item_name.slice(0, 30)}</div><div style={{ fontSize: 11, color: '#999' }}>{it.status}</div></div>
+                <button onClick={async () => { await act('replace', { oldItemId: it.item_id, itemId: replaceTarget.itemId, itemName: replaceTarget.itemName }); setReplaceTarget(null); }}
+                  style={{ padding: '6px 14px', background: '#EE4D2D', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>이것과 교체</button>
+              </div>
+            ))}
+            <button onClick={() => setReplaceTarget(null)} style={{ marginTop: 16, width: '100%', padding: '8px', background: '#f0f0f0', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>취소</button>
+          </div>
+        </div>
+      )}
+
       {/* ===== 좌측 사이드바 ===== */}
       <aside style={{ width: 240, background: '#fff', borderRight: '1px solid #eee', padding: 20, flexShrink: 0, overflowY: 'auto' }}>
-        {/* 인증 섹션 */}
         <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>🔑 메인 계정 인증</h3>
         <p style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>한번 로그인으로 8개국 전체 인증</p>
         {hasAuth ? (
-          <div style={{ padding: '6px 12px', background: '#d4edda', color: '#155724', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-            ✅ 인증 완료!
-          </div>
+          <div style={{ padding: '6px 12px', background: '#d4edda', color: '#155724', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>✅ 인증 완료!</div>
         ) : (
-          <div style={{ padding: '6px 12px', background: '#fff3cd', color: '#856404', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-            ❌ 미인증
-          </div>
+          <div style={{ padding: '6px 12px', background: '#fff3cd', color: '#856404', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>❌ 미인증</div>
         )}
-        <button onClick={doAuth} style={{
-          display: 'block', width: '100%', padding: '8px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 12,
-          background: hasAuth ? '#4CAF50' : '#EE4D2D', color: '#fff',
-        }}>
+        <button onClick={doAuth} style={{ display: 'block', width: '100%', padding: '8px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 12, background: hasAuth ? '#4CAF50' : '#EE4D2D', color: '#fff' }}>
           {hasAuth ? '🔄 재인증' : '🔐 인증하기'}
         </button>
-
         <p style={{ fontSize: 11, color: '#999', marginBottom: 6 }}>국가별 인증:</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 16 }}>
-          {COUNTRIES.map(c => {
-            const ok = !!countryAuth[c];
-            return (
-              <div key={c} style={{ textAlign: 'center', padding: '4px', background: '#f8f9fa', borderRadius: 4, fontSize: 11 }}>
-                {ok ? '✅' : '❌'} <b>{c}</b>
-              </div>
-            );
-          })}
+          {COUNTRIES.map(c => (<div key={c} style={{ textAlign: 'center', padding: '4px', background: '#f8f9fa', borderRadius: 4, fontSize: 11 }}>{!!countryAuth[c] ? '✅' : '❌'} <b>{c}</b></div>))}
         </div>
-
         <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
-
-        {/* 전체 부스트 현황 */}
         <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>📊 전체 부스트 현황</h3>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, color: '#999' }}>🟢 부스트 중</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#333' }}>{totalActive}개</div>
-          </div>
-          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, color: '#999' }}>🟡 대기 중</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#333' }}>{totalWaiting}개</div>
-          </div>
+          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 11, color: '#999' }}>🟢 부스트 중</div><div style={{ fontSize: 22, fontWeight: 800 }}>{totalActive}개</div></div>
+          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 11, color: '#999' }}>🟡 대기 중</div><div style={{ fontSize: 22, fontWeight: 800 }}>{totalWaiting}개</div></div>
         </div>
-
         <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
-
-        {/* 시스템 정보 */}
         <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>⚙️ 시스템 정보</h3>
         <table style={{ width: '100%', fontSize: 11, color: '#666', borderCollapse: 'collapse' }}>
           <tbody>
-            {[
-              ['국가', `${COUNTRIES.length}개국`],
-              ['슬롯', `${MAX_SLOTS}개/국가`],
-              ['쿨타임', `${COOLDOWN_HOURS}시간`],
-              ['엔진', 'Next.js + Vercel'],
-            ].map(([k, v]) => (
-              <tr key={k}>
-                <td style={{ padding: '3px 0', fontWeight: 600 }}>{k}</td>
-                <td style={{ padding: '3px 0', textAlign: 'right' }}>{v}</td>
-              </tr>
+            {[['국가', `${COUNTRIES.length}개국`], ['슬롯', `${MAX_SLOTS}개/국가`], ['쿨타임', `${COOLDOWN_HOURS}시간`], ['엔진', 'Next.js + Vercel']].map(([k, v]) => (
+              <tr key={k}><td style={{ padding: '3px 0', fontWeight: 600 }}>{k}</td><td style={{ padding: '3px 0', textAlign: 'right' }}>{v}</td></tr>
             ))}
           </tbody>
         </table>
-        <p style={{ fontSize: 10, color: '#bbb', marginTop: 8 }}>💡 Vercel Serverless 기반<br/>Git push 시 자동 재배포</p>
+        <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '16px 0' }} />
+        <button onClick={handleLogout} style={{ width: '100%', padding: '6px', background: '#f0f0f0', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, color: '#999', cursor: 'pointer' }}>🚪 로그아웃</button>
       </aside>
 
-      {/* ===== 메인 콘텐츠 ===== */}
+      {/* ===== 메인 ===== */}
       <main style={{ flex: 1, overflow: 'auto' }}>
-        {/* 헤더 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 24px', borderBottom: '1px solid #eee', background: '#fff' }}>
           <span style={{ fontSize: 36 }}>🤖</span>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: '#333' }}>쇼피 에이전트</h1>
-            <p style={{ fontSize: 12, color: '#999' }}>크로스보더 Shopee 관리 솔루션</p>
-          </div>
+          <div><h1 style={{ fontSize: 22, fontWeight: 700, color: '#333' }}>쇼피 에이전트</h1><p style={{ fontSize: 12, color: '#999' }}>크로스보더 Shopee 관리 솔루션</p></div>
         </div>
-
-        {/* 국가 탭 */}
         <div style={{ display: 'flex', gap: 3, padding: '0 24px', borderBottom: '1px solid #eee', background: '#fff' }}>
           {COUNTRIES.map(c => (
-            <button key={c} onClick={() => setSel(c)}
-              style={{
-                padding: '10px 16px', fontSize: 13, border: 'none', cursor: 'pointer',
-                borderRadius: '8px 8px 0 0',
-                fontWeight: sel === c ? 700 : 500,
-                background: sel === c ? CC[c].bg : 'transparent',
-                color: sel === c ? CC[c].tx : '#999',
-                borderBottom: sel === c ? `3px solid ${CC[c].tx}` : '3px solid transparent',
-                boxShadow: sel === c ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
-                transition: 'all 0.15s',
-              }}>
-              {NAMES[c]}
-            </button>
+            <button key={c} onClick={() => setSel(c)} style={{
+              padding: '10px 16px', fontSize: 13, border: 'none', cursor: 'pointer', borderRadius: '8px 8px 0 0',
+              fontWeight: sel === c ? 700 : 500, background: sel === c ? CC[c].bg : 'transparent', color: sel === c ? CC[c].tx : '#999',
+              borderBottom: sel === c ? `3px solid ${CC[c].tx}` : '3px solid transparent',
+              boxShadow: sel === c ? '0 2px 8px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.15s',
+            }}>{NAMES[c]}</button>
           ))}
         </div>
-
         <div style={{ padding: '16px 24px' }}>
-          {loading && !data ? (
-            <div style={{ textAlign: 'center', padding: 80, color: '#999' }}>로딩 중...</div>
-          ) : (
+          {loading && !data ? <div style={{ textAlign: 'center', padding: 80, color: '#999' }}>로딩 중...</div> : (
             <>
-              {/* 요약 카드 */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 {[
                   { val: synced, lbl: '📦 동기화 상품', border: '#607D8B' },
@@ -263,55 +235,31 @@ export default function Dashboard() {
                   { val: remaining, lbl: '🆓 남은 슬롯', border: '#9C27B0' },
                 ].map((c, i) => (
                   <div key={i} style={{ flex: 1, background: '#fff', border: '1px solid #eee', borderLeft: `3px solid ${c.border}`, borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: '#333' }}>{c.val}</div>
-                    <div style={{ fontSize: 10, color: '#999' }}>{c.lbl}</div>
+                    <div style={{ fontSize: 20, fontWeight: 700 }}>{c.val}</div><div style={{ fontSize: 10, color: '#999' }}>{c.lbl}</div>
                   </div>
                 ))}
               </div>
-
-              {/* 부스트 컨트롤 */}
               {totalReg > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#fff', border: '1px solid #eee', borderRadius: 8, marginBottom: 12 }}>
                   <div style={{ fontSize: 13 }}>
-                    {data?.isActive ? (
-                      <span>🟢 <b>부스트 활성</b> · {totalReg}개 · 마지막: {toKST(data?.lastBoost)}</span>
-                    ) : (
-                      <span>⏸️ <b>부스트 비활성</b> · {totalReg}개</span>
-                    )}
+                    {data?.isActive ? <span>🟢 <b>부스트 활성</b> · {totalReg}개 · 마지막: {toKST(data?.lastBoost)}</span> : <span>⏸️ <b>부스트 비활성</b> · {totalReg}개</span>}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {!data?.isActive ? (
-                      <button onClick={() => act('start', { itemIds: data?.boostedItems?.map(i => i.item_id) })}
-                        style={{ padding: '8px 20px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                        🚀 부스트 시작
-                      </button>
-                    ) : (
-                      <button onClick={() => act('stop')}
-                        style={{ padding: '8px 20px', background: '#666', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                        ⏹ 부스트 정지
-                      </button>
-                    )}
-                  </div>
+                  {!data?.isActive ? (
+                    <button onClick={() => act('start', { itemIds: data?.boostedItems?.map(i => i.item_id) })} style={{ padding: '8px 20px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>🚀 부스트 시작</button>
+                  ) : (
+                    <button onClick={() => act('stop')} style={{ padding: '8px 20px', background: '#666', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>⏹ 부스트 정지</button>
+                  )}
                 </div>
               )}
-
-              {/* 필터 */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                <input type="text" placeholder="상품명, 상품ID 검색..." value={search} onChange={e => setSearch(e.target.value)}
-                  style={{ flex: 3, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, outline: 'none' }} />
-                <select value={sort} onChange={e => setSort(e.target.value)}
-                  style={{ flex: 1, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}>
-                  <option value="name">이름순</option>
-                  <option value="price">가격순</option>
-                  <option value="stock">재고순</option>
+                <input type="text" placeholder="상품명, 상품ID 검색..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 3, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, outline: 'none' }} />
+                <select value={sort} onChange={e => setSort(e.target.value)} style={{ flex: 1, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}>
+                  <option value="name">이름순</option><option value="price">가격순</option><option value="stock">재고순</option>
                 </select>
-                <button onClick={sync} disabled={syncing}
-                  style={{ flex: 1, padding: '8px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.6 : 1 }}>
+                <button onClick={sync} disabled={syncing} style={{ flex: 1, padding: '8px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.6 : 1 }}>
                   {syncing ? '📦 동기화 중...' : '🔄 상품 동기화'}
                 </button>
               </div>
-
-              {/* 상품 리스트 */}
               {filtered.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 60, color: '#999' }}>📭 상품이 없습니다<br/><small>🔄 상품 동기화를 클릭하세요</small></div>
               ) : (
@@ -322,54 +270,28 @@ export default function Dashboard() {
                     const w = p.weight >= 1 ? `${Number(p.weight).toFixed(2)}kg` : (Number(p.weight) > 0 ? `${Math.round(Number(p.weight) * 1000)}g` : '-');
                     const pr = p.price > 0 ? Number(p.price).toLocaleString() : '-';
                     const st = p.stock > 0 ? String(p.stock) : (p.has_model ? '옵션별' : '0');
-
                     return (
-                      <div key={p.item_id} style={{
-                        display: 'flex', alignItems: 'center', padding: '10px 14px',
-                        background: isBoosted ? '#FFF8E1' : '#fff',
-                        borderBottom: '1px solid #f0f0f0', transition: 'background 0.15s',
-                      }}
+                      <div key={p.item_id} style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', background: isBoosted ? '#FFF8E1' : '#fff', borderBottom: '1px solid #f0f0f0', transition: 'background 0.15s' }}
                         onMouseEnter={e => { if (!isBoosted) e.currentTarget.style.background = '#fafbfc'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = isBoosted ? '#FFF8E1' : '#fff'; }}
-                      >
+                        onMouseLeave={e => { e.currentTarget.style.background = isBoosted ? '#FFF8E1' : '#fff'; }}>
                         <div style={{ flex: 4, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14, color: '#333', lineHeight: 1.5 }}>
-                            {isBoosted && '🟢 '}{p.item_name}
-                          </div>
+                          <div style={{ fontWeight: 600, fontSize: 14, color: '#333', lineHeight: 1.5 }}>{isBoosted && '🟢 '}{p.item_name}</div>
                           <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
                             ID: {p.item_id}
                             <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 3, fontSize: 10, fontWeight: 600, marginLeft: 4, background: cc.bg, color: cc.tx }}>{sel}</span>
                             {p.has_model && <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 3, fontSize: 10, fontWeight: 600, marginLeft: 3, background: '#FFF3E0', color: '#E65100' }}>옵션있음</span>}
                           </div>
                         </div>
-                        <div style={{ width: 70, textAlign: 'center' }}>
-                          <div style={{ fontSize: 10, color: '#999' }}>🏋️ 무게</div>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: '#555' }}>{w}</div>
-                        </div>
-                        <div style={{ width: 70, textAlign: 'center' }}>
-                          <div style={{ fontSize: 10, color: '#999' }}>📦 재고</div>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: '#555' }}>{st}</div>
-                        </div>
-                        <div style={{ width: 70, textAlign: 'center' }}>
-                          <div style={{ fontSize: 10, color: '#999' }}>💰 가격</div>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: '#555' }}>{pr}</div>
-                        </div>
+                        {[{ l: '🏋️ 무게', v: w }, { l: '📦 재고', v: st }, { l: '💰 가격', v: pr }].map((col, ci) => (
+                          <div key={ci} style={{ width: 70, textAlign: 'center' }}><div style={{ fontSize: 10, color: '#999' }}>{col.l}</div><div style={{ fontSize: 13, fontWeight: 500, color: '#555' }}>{col.v}</div></div>
+                        ))}
                         <div style={{ width: 90, marginLeft: 8 }}>
                           {isBoosted ? (
-                            <button onClick={() => act('unregister', { itemId: p.item_id, itemName: p.item_name })}
-                              style={{ width: '100%', padding: '6px', background: '#fff', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}>
-                              해제
-                            </button>
+                            <button onClick={() => act('unregister', { itemId: p.item_id, itemName: p.item_name })} style={{ width: '100%', padding: '6px', background: '#fff', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}>해제</button>
                           ) : remaining > 0 ? (
-                            <button onClick={() => act('register', { itemId: p.item_id, itemName: p.item_name })}
-                              style={{ width: '100%', padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                              ⚡ 부스트
-                            </button>
+                            <button onClick={() => act('register', { itemId: p.item_id, itemName: p.item_name })} style={{ width: '100%', padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>⚡ 부스트</button>
                           ) : (
-                            <button onClick={() => setReplaceTarget({ itemId: p.item_id, itemName: p.item_name })}
-                              style={{ width: '100%', padding: '6px', background: '#fff', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}>
-                              🔄 교체
-                            </button>
+                            <button onClick={() => setReplaceTarget({ itemId: p.item_id, itemName: p.item_name })} style={{ width: '100%', padding: '6px', background: '#fff', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}>🔄 교체</button>
                           )}
                         </div>
                       </div>
@@ -377,20 +299,14 @@ export default function Dashboard() {
                   })}
                 </>
               )}
-
-              {/* 로그 */}
               <div style={{ marginTop: 16 }}>
-                <button onClick={() => { setShowLogs(!showLogs); if (!showLogs) loadLogs(sel); }}
-                  style={{ fontSize: 12, color: '#666', background: '#f0f0f0', border: '1px solid #ddd', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}>
+                <button onClick={() => { setShowLogs(!showLogs); if (!showLogs) loadLogs(sel); }} style={{ fontSize: 12, color: '#666', background: '#f0f0f0', border: '1px solid #ddd', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}>
                   📋 {showLogs ? '로그 닫기' : '최근 로그'}
                 </button>
                 {showLogs && (
                   <div style={{ marginTop: 8, background: '#fff', border: '1px solid #eee', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
                     {logs.length === 0 ? <span>로그 없음</span> : logs.map((log, i) => (
-                      <div key={i} style={{ padding: '2px 0' }}>
-                        {log.result === 'success' ? '✅' : '❌'} [{log.action}] {log.item_id?.slice(0, 20)} — {log.message}
-                        <span style={{ opacity: 0.4, marginLeft: 4 }}>({toKST(log.created_at)})</span>
-                      </div>
+                      <div key={i} style={{ padding: '2px 0' }}>{log.result === 'success' ? '✅' : '❌'} [{log.action}] {log.item_id?.slice(0, 20)} — {log.message} <span style={{ opacity: 0.4 }}>({toKST(log.created_at)})</span></div>
                     ))}
                   </div>
                 )}
@@ -398,11 +314,7 @@ export default function Dashboard() {
             </>
           )}
         </div>
-        <div style={{ textAlign: 'center', fontSize: 10, color: '#ccc', padding: 12 }}>쇼피 에이전트 v6.0 (Next.js)</div>
       </main>
-
-      {/* 교체 모달 */}
-      <ReplaceModal />
     </div>
   );
 }

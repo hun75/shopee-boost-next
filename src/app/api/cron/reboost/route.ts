@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
         const refreshed = await shopee.refreshAccessToken(
           mainToken.refresh_token,
           mainToken.shop_id,
+          mainToken.main_account_id,
         );
         if (refreshed?.access_token) {
           const existingTokens = await db.loadTokens();

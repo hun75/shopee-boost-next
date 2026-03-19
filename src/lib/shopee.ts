@@ -193,17 +193,26 @@ export async function exchangeCodeForToken(code: string, shopId?: number, mainAc
   return resp.json();
 }
 
-export async function refreshAccessToken(refreshToken: string, shopId: number): Promise<any> {
+export async function refreshAccessToken(refreshToken: string, shopId?: number, mainAccountId?: number): Promise<any> {
   const path = '/api/v2/auth/access_token/get';
   const timestamp = Math.floor(Date.now() / 1000);
   const baseString = `${PARTNER_ID}${path}${timestamp}`;
   const sign = crypto.createHmac('sha256', PARTNER_KEY).update(baseString).digest('hex');
 
   const url = `${API_HOST}${path}?partner_id=${PARTNER_ID}&timestamp=${timestamp}&sign=${sign}`;
+
+  // main_account 인증이면 main_account_id, shop 인증이면 shop_id 사용
+  const body: any = { refresh_token: refreshToken, partner_id: PARTNER_ID };
+  if (mainAccountId) {
+    body.main_account_id = mainAccountId;
+  } else if (shopId) {
+    body.shop_id = shopId;
+  }
+
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken, partner_id: PARTNER_ID, shop_id: shopId }),
+    body: JSON.stringify(body),
     cache: 'no-store',
   });
   const data = await resp.json();

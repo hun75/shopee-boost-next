@@ -6,7 +6,8 @@ import * as db from '@/lib/db';
 export async function GET(req: NextRequest) {
   const host = req.headers.get('host') || 'localhost:3000';
   const protocol = host.includes('localhost') ? 'http' : 'https';
-  const redirectUrl = `${protocol}://${host}/api/shopee/auth/callback`;
+  // Shopee 등록 도메인과 일치: 경로 없이 도메인만 사용
+  const redirectUrl = `${protocol}://${host}`;
   const authUrl = shopee.generateAuthUrl(redirectUrl);
   return NextResponse.json({ authUrl });
 }

@@ -162,17 +162,21 @@ export function generateAuthUrl(redirectUrl: string): string {
   return `${API_HOST}${path}?partner_id=${PARTNER_ID}&redirect=${encodeURIComponent(redirectUrl)}&sign=${sign}&timestamp=${timestamp}`;
 }
 
-export async function exchangeCodeForToken(code: string, shopId: number): Promise<any> {
+export async function exchangeCodeForToken(code: string, shopId?: number, mainAccountId?: number): Promise<any> {
   const path = '/api/v2/auth/token/get';
   const timestamp = Math.floor(Date.now() / 1000);
   const baseString = `${PARTNER_ID}${path}${timestamp}`;
   const sign = crypto.createHmac('sha256', PARTNER_KEY).update(baseString).digest('hex');
 
   const url = `${API_HOST}${path}?partner_id=${PARTNER_ID}&timestamp=${timestamp}&sign=${sign}`;
+  const body: any = { code, partner_id: PARTNER_ID };
+  if (mainAccountId) body.main_account_id = mainAccountId;
+  else if (shopId) body.shop_id = shopId;
+
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, partner_id: PARTNER_ID, shop_id: shopId }),
+    body: JSON.stringify(body),
     cache: 'no-store',
   });
   return resp.json();

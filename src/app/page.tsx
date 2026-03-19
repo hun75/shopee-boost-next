@@ -95,6 +95,22 @@ export default function Dashboard() {
     fetch('/api/auth/login').then(r => r.json()).then(j => setLoggedIn(j.authenticated)).catch(() => setLoggedIn(false));
   }, []);
 
+  // Shopee OAuth 콜백 — URL에 code 파라미터가 있으면 자동 토큰 교환
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (!code) return;
+    const shopId = params.get('shop_id') || '';
+    const mainAccountId = params.get('main_account_id') || '';
+    fetch(`/api/shopee/auth/exchange?code=${code}&shop_id=${shopId}&main_account_id=${mainAccountId}`)
+      .then(r => r.json())
+      .then(j => {
+        if (j.success) { window.history.replaceState({}, '', '/'); window.location.reload(); }
+        else { alert(`인증 실패: ${j.error || j.message || '알 수 없는 오류'}`); window.history.replaceState({}, '', '/'); }
+      })
+      .catch(() => { alert('토큰 교환 중 서버 오류'); window.history.replaceState({}, '', '/'); });
+  }, []);
+
   const load = useCallback(async (c: string) => {
     setLoading(true);
     try { const r = await fetch(`/api/shopee/items?country=${c}`); const j = await r.json(); if (!j.error) setData(j); } catch {} finally { setLoading(false); }

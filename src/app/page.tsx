@@ -36,6 +36,12 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [pw, setPw] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // 비밀번호 변경 상태
+  const [resetMode, setResetMode] = useState<'off' | 'send' | 'verify'>('off');
+  const [resetCode, setResetCode] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const submit = async () => {
     setLoading(true); setError('');
@@ -51,25 +57,92 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
     finally { setLoading(false); }
   };
 
+  const sendCode = async () => {
+    setResetLoading(true); setResetMsg('');
+    try {
+      const r = await fetch('/api/auth/password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send_code' }),
+      });
+      const j = await r.json();
+      if (j.success) { setResetMode('verify'); setResetMsg(j.message); }
+      else setResetMsg(j.error || '발송 실패');
+    } catch { setResetMsg('서버 오류'); }
+    finally { setResetLoading(false); }
+  };
+
+  const verifyAndChange = async () => {
+    setResetLoading(true); setResetMsg('');
+    try {
+      const r = await fetch('/api/auth/password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify_and_change', code: resetCode, newPassword: newPw }),
+      });
+      const j = await r.json();
+      if (j.success) { setResetMsg('✅ 비밀번호가 변경되었습니다! 새 비밀번호로 로그인하세요.'); setResetMode('off'); setResetCode(''); setNewPw(''); }
+      else setResetMsg(j.error || '변경 실패');
+    } catch { setResetMsg('서버 오류'); }
+    finally { setResetLoading(false); }
+  };
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
       <div style={{ background: '#fff', borderRadius: 16, padding: 40, width: 380, boxShadow: '0 4px 24px rgba(0,0,0,0.1)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <span style={{ fontSize: 48 }}>🤖</span>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#333', marginTop: 8 }}>쇼피 에이전트</h1>
-          <p style={{ fontSize: 13, color: '#999' }}>관리자 로그인</p>
+          <p style={{ fontSize: 13, color: '#999' }}>{resetMode === 'off' ? '관리자 로그인' : '🔑 비밀번호 변경'}</p>
         </div>
-        {error && <div style={{ padding: '8px 12px', background: '#fee', color: '#c00', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{error}</div>}
-        <input type="text" placeholder="아이디" value={id} onChange={e => setId(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && submit()}
-          style={{ width: '100%', padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 10, outline: 'none', boxSizing: 'border-box' }} />
-        <input type="password" placeholder="비밀번호" value={pw} onChange={e => setPw(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && submit()}
-          style={{ width: '100%', padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 16, outline: 'none', boxSizing: 'border-box' }} />
-        <button onClick={submit} disabled={loading}
-          style={{ width: '100%', padding: '12px', background: '#EE4D2D', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
-          {loading ? '로그인 중...' : '🔐 로그인'}
-        </button>
+
+        {resetMode === 'off' ? (
+          <>
+            {error && <div style={{ padding: '8px 12px', background: '#fee', color: '#c00', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+            {resetMsg && <div style={{ padding: '8px 12px', background: '#e8f5e9', color: '#2e7d32', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{resetMsg}</div>}
+            <input type="text" placeholder="아이디" value={id} onChange={e => setId(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              style={{ width: '100%', padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 10, outline: 'none', boxSizing: 'border-box' }} />
+            <input type="password" placeholder="비밀번호" value={pw} onChange={e => setPw(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              style={{ width: '100%', padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 16, outline: 'none', boxSizing: 'border-box' }} />
+            <button onClick={submit} disabled={loading}
+              style={{ width: '100%', padding: '12px', background: '#EE4D2D', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+              {loading ? '로그인 중...' : '🔐 로그인'}
+            </button>
+            <div style={{ textAlign: 'center', marginTop: 16 }}>
+              <button onClick={() => { setResetMode('send'); setResetMsg(''); setError(''); }}
+                style={{ background: 'none', border: 'none', color: '#999', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+                비밀번호를 잊으셨나요?
+              </button>
+            </div>
+          </>
+        ) : resetMode === 'send' ? (
+          <>
+            {resetMsg && <div style={{ padding: '8px 12px', background: '#fff3cd', color: '#856404', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{resetMsg}</div>}
+            <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>등록된 이메일로 인증 코드를 발송합니다.</p>
+            <button onClick={sendCode} disabled={resetLoading}
+              style={{ width: '100%', padding: '12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: resetLoading ? 'not-allowed' : 'pointer', opacity: resetLoading ? 0.7 : 1 }}>
+              {resetLoading ? '발송 중...' : '📧 인증 코드 발송'}
+            </button>
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <button onClick={() => { setResetMode('off'); setResetMsg(''); }} style={{ background: 'none', border: 'none', color: '#999', fontSize: 12, cursor: 'pointer' }}>← 로그인으로 돌아가기</button>
+            </div>
+          </>
+        ) : (
+          <>
+            {resetMsg && <div style={{ padding: '8px 12px', background: '#e3f2fd', color: '#1565c0', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{resetMsg}</div>}
+            <input type="text" placeholder="인증 코드 6자리" value={resetCode} onChange={e => setResetCode(e.target.value)}
+              style={{ width: '100%', padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, marginBottom: 10, outline: 'none', boxSizing: 'border-box' as const, textAlign: 'center' as const, letterSpacing: 8, fontWeight: 700, fontSize: 20 }} />
+            <input type="password" placeholder="새 비밀번호" value={newPw} onChange={e => setNewPw(e.target.value)}
+              style={{ width: '100%', padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 16, outline: 'none', boxSizing: 'border-box' }} />
+            <button onClick={verifyAndChange} disabled={resetLoading || !resetCode || !newPw}
+              style={{ width: '100%', padding: '12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: (resetLoading || !resetCode || !newPw) ? 'not-allowed' : 'pointer', opacity: (resetLoading || !resetCode || !newPw) ? 0.7 : 1 }}>
+              {resetLoading ? '변경 중...' : '✅ 비밀번호 변경'}
+            </button>
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <button onClick={() => { setResetMode('off'); setResetMsg(''); setResetCode(''); setNewPw(''); }} style={{ background: 'none', border: 'none', color: '#999', fontSize: 12, cursor: 'pointer' }}>← 로그인으로 돌아가기</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

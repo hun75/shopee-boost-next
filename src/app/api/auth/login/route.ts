@@ -1,15 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
+
+// Supabase에서 관리자 비밀번호 조회 (없으면 환경변수 사용)
+async function getAdminCredentials(): Promise<{ id: string; password: string }> {
+  try {
+    const { data } = await supabase.from('auth_tokens').select('token_data').eq('key', 'admin_credentials').single();
+    if (data?.token_data?.password) {
+      return { id: data.token_data.id || process.env.ADMIN_ID || 'admin', password: data.token_data.password };
+    }
+  } catch {}
+  // Supabase에 없으면 환경변수 사용 (초기 상태)
+  return { id: process.env.ADMIN_ID || 'admin', password: process.env.ADMIN_PASSWORD || 'admin123' };
+}
 
 // POST /api/auth/login — 관리자 로그인
 export async function POST(req: NextRequest) {
   try {
     const { id, password } = await req.json();
-    const adminId = process.env.ADMIN_ID || 'admin';
-    const adminPw = process.env.ADMIN_PASSWORD || 'admin123';
+    const admin = await getAdminCredentials();
 
-    if (id === adminId && password === adminPw) {
-      // 간단한 세션 토큰 생성
-      const token = Buffer.from(`${adminId}:${Date.now()}`).toString('base64');
+    if (id === admin.id && password === admin.password) {
+      const token = Buffer.from(`${admin.id}:${Date.now()}`).toString('base64');
       
       const res = NextResponse.json({ success: true });
       res.cookies.set('admin_session', token, {
@@ -34,8 +45,8 @@ export async function GET(req: NextRequest) {
   if (session) {
     try {
       const decoded = Buffer.from(session, 'base64').toString();
-      const adminId = process.env.ADMIN_ID || 'admin';
-      if (decoded.startsWith(adminId + ':')) {
+      const admin = await getAdminCredentials();
+      if (decoded.startsWith(admin.id + ':')) {
         return NextResponse.json({ authenticated: true });
       }
     } catch {}

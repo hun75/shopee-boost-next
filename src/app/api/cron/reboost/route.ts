@@ -118,27 +118,37 @@ export async function GET(req: NextRequest) {
         const now = new Date().toISOString();
         const boostedCount = result.boosted?.length || 0;
 
-        if (boostedCount > 0) {
+        // "이미 부스트 중" 에러는 성공으로 간주 (쿨타임 갱신)
+        const alreadyBoosted = result.raw_error === 'product.error_busi';
+
+        if (boostedCount > 0 || alreadyBoosted) {
           await db.updateLastBoostTime(country, now);
-          for (const iid of result.boosted) {
-            await db.updateItemStatus(country, iid, 'Active', now);
+          if (boostedCount > 0) {
+            for (const iid of result.boosted) {
+              await db.updateItemStatus(country, iid, 'Active', now);
+            }
           }
         }
-        // 실패한 상품은 Error 상태로 변경
-        if (result.failed?.length > 0) {
+        // 진짜 실패한 상품만 Error 상태로 변경 (이미 부스트 중은 제외)
+        if (!alreadyBoosted && result.failed?.length > 0) {
           for (const iid of result.failed) {
             await db.updateItemStatus(country, iid, 'Error', now);
           }
         }
 
-        await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost',
-          boostedCount > 0 ? 'success' : 'fail',
-          `자동 부스트: ${boostedCount}/${itemIds.length}건 | ${result.message || ''}`
-        );
-
-        results[country] = boostedCount > 0
-          ? `boosted ${boostedCount}/${itemIds.length}`
-          : `FAILED 0/${itemIds.length}: ${result.raw_error || result.message || 'unknown'}`;
+        if (alreadyBoosted) {
+          await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost', 'success',
+            `이미 부스트 활성 중 (${itemIds.length}건)`);
+          results[country] = `already boosted (${itemIds.length} items active)`;
+        } else {
+          await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost',
+            boostedCount > 0 ? 'success' : 'fail',
+            `자동 부스트: ${boostedCount}/${itemIds.length}건 | ${result.message || ''}`
+          );
+          results[country] = boostedCount > 0
+            ? `boosted ${boostedCount}/${itemIds.length}`
+            : `FAILED 0/${itemIds.length}: ${result.raw_error || result.message || 'unknown'}`;
+        }
       } catch (e: any) {
         results[country] = `error: ${e.message?.slice(0, 60)}`;
         await db.addLog(country, '', 'auto_boost', 'fail', `실패: ${e.message?.slice(0, 50)}`);

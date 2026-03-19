@@ -42,11 +42,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const results: Record<string, string> = {};
+  const results: Record<string, any> = {};
+  const debug: Record<string, any> = {};
 
   try {
     const tokens = await db.loadTokens();
     const mainToken = tokens._main_account;
+
+    // 디버그: DB에 저장된 토큰 정보
+    debug.db_token = {
+      has_access_token: !!mainToken?.access_token,
+      access_token_preview: mainToken?.access_token?.slice(0, 15) + '...',
+      has_refresh_token: !!mainToken?.refresh_token,
+      refresh_token_preview: mainToken?.refresh_token?.slice(0, 15) + '...',
+      shop_id: mainToken?.shop_id,
+      main_account_id: mainToken?.main_account_id,
+      updated_at: mainToken?.updated_at,
+    };
 
     // ✅ 항상 토큰 리프레시 먼저 시도 (만료 여부와 무관하게)
     if (mainToken?.refresh_token) {
@@ -56,6 +68,17 @@ export async function GET(req: NextRequest) {
           mainToken.shop_id,
           mainToken.main_account_id,
         );
+
+        // 디버그: Shopee 리프레시 응답 원본
+        debug.refresh_response = {
+          has_access_token: !!refreshed?.access_token,
+          access_token_preview: refreshed?.access_token?.slice(0, 15) + '...',
+          has_refresh_token: !!refreshed?.refresh_token,
+          error: refreshed?.error || 'none',
+          message: refreshed?.message || 'none',
+          expire_in: refreshed?.expire_in,
+        };
+
         if (refreshed?.access_token) {
           const existingTokens = await db.loadTokens();
           existingTokens._main_account = {
@@ -73,16 +96,23 @@ export async function GET(req: NextRequest) {
           }
           await db.saveTokens(existingTokens);
           await db.addLog('SYSTEM', '', 'token_refresh', 'success', '토큰 리프레시 성공');
+          debug.refresh_status = 'SUCCESS';
+        } else {
+          debug.refresh_status = 'NO_ACCESS_TOKEN_IN_RESPONSE';
         }
       } catch (refreshErr: any) {
-        // 리프레시 실패 시 기존 토큰으로 시도 (아직 유효할 수도 있음)
+        debug.refresh_status = 'ERROR';
+        debug.refresh_error = refreshErr.message;
         await db.addLog('SYSTEM', '', 'token_refresh', 'fail', `토큰 리프레시 실패: ${refreshErr.message?.slice(0, 50)}`);
       }
+    } else {
+      debug.refresh_status = 'NO_REFRESH_TOKEN';
     }
 
     // 최신 토큰 다시 로드
     const freshTokens = await db.loadTokens();
     const token = freshTokens._main_account?.access_token;
+    debug.final_token_preview = token?.slice(0, 15) + '...';
     if (!token) return NextResponse.json({ error: '토큰 없음 (refresh_token도 없음)', results: {} });
 
     for (const country of shopee.COUNTRIES) {
@@ -143,7 +173,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, results, timestamp: new Date().toISOString() });
+    return NextResponse.json({ success: true, results, debug, timestamp: new Date().toISOString() });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

@@ -193,18 +193,38 @@ export async function exchangeCodeForToken(code: string, shopId?: number, mainAc
   return resp.json();
 }
 
-export async function refreshAccessToken(refreshToken: string, shopId: number): Promise<any> {
-  const path = '/api/v2/auth/access_token/get';
+/**
+ * 토큰 리프레시
+ * - 메인 계정 인증(merchantId 있음): /api/v2/auth/merchant/access_token/get
+ * - 개별 shop 인증(shopId 있음): /api/v2/auth/access_token/get
+ */
+export async function refreshAccessToken(
+  refreshToken: string,
+  opts: { shopId?: number; merchantId?: number }
+): Promise<any> {
+  // 메인 계정이면 merchant 전용 엔드포인트
+  const isMerchant = !!opts.merchantId;
+  const path = isMerchant
+    ? '/api/v2/auth/merchant/access_token/get'
+    : '/api/v2/auth/access_token/get';
+
   const timestamp = Math.floor(Date.now() / 1000);
   const baseString = `${PARTNER_ID}${path}${timestamp}`;
   const sign = crypto.createHmac('sha256', PARTNER_KEY).update(baseString).digest('hex');
 
   const url = `${API_HOST}${path}?partner_id=${PARTNER_ID}&timestamp=${timestamp}&sign=${sign}`;
 
+  const body: any = { refresh_token: refreshToken, partner_id: PARTNER_ID };
+  if (isMerchant) {
+    body.merchant_id = opts.merchantId;
+  } else if (opts.shopId) {
+    body.shop_id = opts.shopId;
+  }
+
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken, partner_id: PARTNER_ID, shop_id: shopId }),
+    body: JSON.stringify(body),
     cache: 'no-store',
   });
   const data = await resp.json();

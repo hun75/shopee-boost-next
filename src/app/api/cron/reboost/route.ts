@@ -54,12 +54,51 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '리프레시 토큰 없음. 대시보드에서 재인증 필요.', results: {} });
     }
 
-    debug.main_account_id = mainToken.main_account_id;
-    debug.has_refresh_token = true;
+    // ─── 1단계: 메인 계정 토큰 리프레시 (1회) ───
+    // main_account_id가 있으면 merchant 전용 엔드포인트 사용
+    // 없으면 첫 번째 shop_id로 shop 레벨 리프레시
+    let accessToken: string;
+    try {
+      const refreshOpts = mainToken.main_account_id
+        ? { merchantId: mainToken.main_account_id }
+        : { shopId: mainToken.shop_id || shopee.SHOPS['TW'] };
 
-    // ✅ 리프레시 토큰 체이닝: 각 나라 리프레시 후 새 토큰을 다음 나라에 전달
-    let latestRefreshToken = mainToken.refresh_token;
+      const refreshed = await shopee.refreshAccessToken(mainToken.refresh_token, refreshOpts);
+      accessToken = refreshed.access_token;
 
+      debug.refresh_endpoint = mainToken.main_account_id ? 'merchant' : 'shop';
+      debug.refresh_status = 'SUCCESS';
+      debug.token_preview = accessToken?.slice(0, 15) + '...';
+
+      // 갱신된 토큰 DB 저장
+      const updatedTokens = await db.loadTokens();
+      updatedTokens._main_account = {
+        ...updatedTokens._main_account,
+        access_token: accessToken,
+        refresh_token: refreshed.refresh_token || mainToken.refresh_token,
+        updated_at: new Date().toISOString(),
+      };
+      // 모든 국가 토큰도 동일하게 갱신
+      for (const c of shopee.COUNTRIES) {
+        if (updatedTokens[c]) {
+          updatedTokens[c].access_token = accessToken;
+        }
+      }
+      await db.saveTokens(updatedTokens);
+      await db.addLog('SYSTEM', '', 'token_refresh', 'success', '토큰 리프레시 성공');
+
+    } catch (refreshErr: any) {
+      debug.refresh_status = 'ERROR';
+      debug.refresh_error = refreshErr.message;
+      await db.addLog('SYSTEM', '', 'token_refresh', 'fail', `토큰 리프레시 실패: ${refreshErr.message?.slice(0, 80)}`);
+      return NextResponse.json({
+        error: `토큰 리프레시 실패: ${refreshErr.message}`,
+        debug,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // ─── 2단계: 각 나라별 부스트 (동일 토큰 사용) ───
     for (const country of shopee.COUNTRIES) {
       try {
         const isActive = await db.getBoostActive(country);
@@ -87,25 +126,9 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // ✅ 각 나라마다 해당 shop_id로 개별 토큰 리프레시 (체이닝된 refresh_token 사용)
-        const countryShopId = shopee.SHOPS[country];
-        let countryToken: string;
-        try {
-          const refreshed = await shopee.refreshAccessToken(latestRefreshToken, countryShopId);
-          countryToken = refreshed.access_token;
-          // 새 refresh_token을 다음 나라에 체이닝
-          if (refreshed.refresh_token) {
-            latestRefreshToken = refreshed.refresh_token;
-          }
-        } catch (refreshErr: any) {
-          results[country] = `TOKEN_REFRESH_FAIL: ${refreshErr.message?.slice(0, 60)}`;
-          await db.addLog(country, '', 'token_refresh', 'fail', `${country} 토큰 리프레시 실패: ${refreshErr.message?.slice(0, 50)}`);
-          continue;
-        }
-
-        // 부스트 실행
+        // 부스트 실행 (메인 계정 토큰으로 모든 나라 접근)
         const itemIds = items.map((it: any) => it.item_id);
-        const result = await boostWithRetry(country, countryToken, itemIds);
+        const result = await boostWithRetry(country, accessToken, itemIds);
         const now = new Date().toISOString();
         const boostedCount = result.boosted?.length || 0;
 
@@ -128,17 +151,6 @@ export async function GET(req: NextRequest) {
         results[country] = `error: ${e.message?.slice(0, 60)}`;
         await db.addLog(country, '', 'auto_boost', 'fail', `실패: ${e.message?.slice(0, 50)}`);
       }
-    }
-
-    // ✅ 루프 종료 후 최종 refresh_token을 DB에 저장 (다음 cron 실행용)
-    if (latestRefreshToken !== mainToken.refresh_token) {
-      const finalTokens = await db.loadTokens();
-      finalTokens._main_account = {
-        ...finalTokens._main_account,
-        refresh_token: latestRefreshToken,
-        updated_at: new Date().toISOString(),
-      };
-      await db.saveTokens(finalTokens);
     }
 
     return NextResponse.json({ success: true, results, debug, timestamp: new Date().toISOString() });

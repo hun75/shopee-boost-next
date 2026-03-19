@@ -144,15 +144,26 @@ export async function boostItems(country: string, accessToken: string, itemIds: 
   const failed: string[] = [];
 
   if (data.error) {
-    return { success: false, boosted: [], failed: itemIds, message: `API 오류: ${data.error}` };
+    return {
+      success: false, boosted: [], failed: itemIds,
+      message: `API 오류: ${data.error} - ${data.message || ''}`,
+      raw_error: data.error,
+      raw_message: data.message || '',
+    };
   }
 
-  const failedIds = new Set((data.response?.failures || []).map((f: any) => String(f.item_id)));
+  // failures 상세 정보 포함
+  const failures = data.response?.failures || [];
+  const failedIds = new Set(failures.map((f: any) => String(f.item_id)));
   for (const id of itemIds) {
     if (failedIds.has(id)) failed.push(id); else boosted.push(id);
   }
 
-  return { success: failed.length === 0, boosted, failed, message: `${boosted.length}건 성공, ${failed.length}건 실패` };
+  return {
+    success: failed.length === 0, boosted, failed,
+    message: `${boosted.length}건 성공, ${failed.length}건 실패`,
+    failures_detail: failures,
+  };
 }
 
 export function generateAuthUrl(redirectUrl: string): string {

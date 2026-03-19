@@ -129,10 +129,13 @@ export async function GET(req: NextRequest) {
 
         await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost',
           boostedCount > 0 ? 'success' : 'fail',
-          `자동 부스트: ${boostedCount}/${itemIds.length}건 성공`
+          `자동 부스트: ${boostedCount}/${itemIds.length}건 성공 | ${result.message || ''}`
         );
 
-        results[country] = `boosted ${boostedCount}/${itemIds.length}`;
+        // 에러 상세 포함
+        results[country] = boostedCount > 0
+          ? `boosted ${boostedCount}/${itemIds.length}`
+          : `FAILED 0/${itemIds.length}: ${result.raw_error || result.message || 'unknown'}`;
       } catch (e: any) {
         results[country] = `error after ${MAX_RETRIES} retries: ${e.message}`;
         await db.addLog(country, '', 'auto_boost', 'fail', `${MAX_RETRIES}회 재시도 후 실패: ${e.message?.slice(0, 50)}`);

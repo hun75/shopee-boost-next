@@ -162,6 +162,7 @@ export default function Dashboard() {
   const [showLogs, setShowLogs] = useState(false);
   const [allItems, setAllItems] = useState<BoostedItem[]>([]);
   const [replaceTarget, setReplaceTarget] = useState<{ itemId: string; itemName: string } | null>(null);
+  const [authAlerts, setAuthAlerts] = useState<Record<string, { required: boolean; message: string | null }>>({});
 
   // 세션 확인
   useEffect(() => {
@@ -197,7 +198,7 @@ export default function Dashboard() {
     try { const r = await fetch('/api/shopee/boost?action=allItems'); setAllItems(await r.json() || []); } catch {}
   }, []);
 
-  useEffect(() => { if (loggedIn) { fetch('/api/shopee/auth', { method: 'POST' }).then(r => r.json()).then(setAuth).catch(() => {}); loadAll(); } }, [loggedIn, loadAll]);
+  useEffect(() => { if (loggedIn) { fetch('/api/shopee/auth', { method: 'POST' }).then(r => r.json()).then(setAuth).catch(() => {}); loadAll(); fetch('/api/shopee/auth-alerts').then(r => r.json()).then(setAuthAlerts).catch(() => {}); } }, [loggedIn, loadAll]);
   useEffect(() => { if (loggedIn) load(sel); }, [sel, loggedIn, load]);
 
   const sync = async () => {
@@ -239,8 +240,27 @@ export default function Dashboard() {
   else if (sort === 'stock') filtered = [...filtered].sort((a, b) => (b.stock || 0) - (a.stock || 0));
   else filtered = [...filtered].sort((a, b) => a.item_name.localeCompare(b.item_name));
 
+  const alertCountries = Object.entries(authAlerts).filter(([, v]) => v.required);
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8f9fa' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f8f9fa' }}>
+      {/* ===== 재인증 필요 경고 배너 ===== */}
+      {alertCountries.length > 0 && (
+        <div style={{ background: '#DC3545', color: '#fff', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <strong>⚠️ 토큰 만료 경고</strong>
+            {alertCountries.map(([c, v]) => (
+              <span key={c} style={{ display: 'inline-block', marginLeft: 12, padding: '2px 8px', background: 'rgba(255,255,255,0.2)', borderRadius: 4, fontSize: 13 }}>
+                {v.message || `${c} 재인증 필요`}
+              </span>
+            ))}
+          </div>
+          <button onClick={doAuth} style={{ padding: '6px 16px', background: '#fff', color: '#DC3545', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+            🔐 재인증하기
+          </button>
+        </div>
+      )}
+    <div style={{ display: 'flex', flex: 1 }}>
       {/* 교체 모달 */}
       {replaceTarget && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setReplaceTarget(null)}>
@@ -402,6 +422,7 @@ export default function Dashboard() {
           )}
         </div>
       </main>
+    </div>
     </div>
   );
 }

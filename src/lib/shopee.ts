@@ -140,29 +140,63 @@ export async function boostItems(country: string, accessToken: string, itemIds: 
   });
   const data = await resp.json();
 
-  const boosted: string[] = [];
-  const failed: string[] = [];
-
-  if (data.error) {
+  // ── 배치 성공 (개별 failures만 있을 수 있음) ──
+  if (!data.error) {
+    const boosted: string[] = [];
+    const failed: string[] = [];
+    const failures = data.response?.failures || [];
+    const failedIds = new Set(failures.map((f: any) => String(f.item_id)));
+    for (const id of itemIds) {
+      if (failedIds.has(id)) failed.push(id); else boosted.push(id);
+    }
     return {
-      success: false, boosted: [], failed: itemIds,
-      message: `API 오류: ${data.error} - ${data.message || ''}`,
-      raw_error: data.error,
-      raw_message: data.message || '',
+      success: failed.length === 0, boosted, failed,
+      message: `${boosted.length}건 성공, ${failed.length}건 실패`,
+      failures_detail: failures,
     };
   }
 
-  // failures 상세 정보 포함
-  const failures = data.response?.failures || [];
-  const failedIds = new Set(failures.map((f: any) => String(f.item_id)));
-  for (const id of itemIds) {
-    if (failedIds.has(id)) failed.push(id); else boosted.push(id);
+  // ── 배치 실패 → 상품별 개별 부스트로 폴백 (에러 격리) ──
+  const boosted: string[] = [];
+  const failed: string[] = [];
+  const failErrors: string[] = [];
+
+  for (const itemId of itemIds) {
+    try {
+      const singleParams = buildParams(apiPath, accessToken, shopId);
+      const singleUrl = `${API_HOST}${apiPath}?${new URLSearchParams(Object.entries(singleParams).map(([k, v]) => [k, String(v)])).toString()}`;
+
+      const singleResp = await fetch(singleUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id_list: [Number(itemId)] }),
+        cache: 'no-store',
+      });
+      const singleData = await singleResp.json();
+
+      if (singleData.error) {
+        failed.push(itemId);
+        failErrors.push(`${itemId}: ${singleData.error}`);
+      } else {
+        const singleFailures = singleData.response?.failures || [];
+        if (singleFailures.length > 0) {
+          failed.push(itemId);
+          failErrors.push(`${itemId}: ${singleFailures[0]?.failed_reason || 'unknown'}`);
+        } else {
+          boosted.push(itemId);
+        }
+      }
+    } catch (e: any) {
+      failed.push(itemId);
+      failErrors.push(`${itemId}: ${e.message?.slice(0, 30) || 'error'}`);
+    }
   }
 
   return {
     success: failed.length === 0, boosted, failed,
-    message: `${boosted.length}건 성공, ${failed.length}건 실패`,
-    failures_detail: failures,
+    message: `개별 부스트: ${boosted.length}건 성공, ${failed.length}건 실패`,
+    raw_error: data.error,
+    fail_details: failErrors,
   };
 }
 

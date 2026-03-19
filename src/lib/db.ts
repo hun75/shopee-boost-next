@@ -74,6 +74,30 @@ export async function updateLastBoostTime(country: string, time: string) {
   await supabase.from('boost_settings').upsert({ country, last_boost_at: time });
 }
 
+export async function setAuthRequired(country: string, required: boolean, message?: string) {
+  await supabase.from('boost_settings').upsert({
+    country,
+    auth_required: required,
+    auth_message: required ? (message || '토큰 만료. 재인증 필요') : null,
+  });
+}
+
+export async function getAuthRequired(country: string): Promise<{ required: boolean; message: string | null }> {
+  const { data } = await supabase.from('boost_settings').select('auth_required, auth_message').eq('country', country).single();
+  return { required: data?.auth_required ?? false, message: data?.auth_message ?? null };
+}
+
+export async function getAllAuthRequired(): Promise<Record<string, { required: boolean; message: string | null }>> {
+  const { data } = await supabase.from('boost_settings').select('country, auth_required, auth_message');
+  const result: Record<string, { required: boolean; message: string | null }> = {};
+  (data || []).forEach((r: any) => {
+    if (r.auth_required) {
+      result[r.country] = { required: true, message: r.auth_message };
+    }
+  });
+  return result;
+}
+
 // ─── boost_logs ───
 
 export async function addLog(country: string, itemId: string, action: string, result: string, message: string) {

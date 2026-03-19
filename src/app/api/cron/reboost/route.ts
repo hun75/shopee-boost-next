@@ -101,9 +101,14 @@ export async function GET(req: NextRequest) {
             updated_at: new Date().toISOString(),
           };
           await db.saveTokens(tokens);
+          // 리프레시 성공 → 재인증 필요 상태 해제
+          await db.setAuthRequired(country, false);
         } catch (refreshErr: any) {
           results[country] = `REFRESH_FAIL: ${refreshErr.message?.slice(0, 80)}`;
           await db.addLog(country, '', 'token_refresh', 'fail', `리프레시 실패: ${refreshErr.message?.slice(0, 50)}`);
+          // 리프레시 실패 → 해당 국가 재인증 필요 표시
+          const countryName = shopee.COUNTRY_NAMES[country] || country;
+          await db.setAuthRequired(country, true, `${countryName} 토큰이 만료되었습니다. 다시 샵 연동을 진행해 주세요.`);
           continue;
         }
 
@@ -117,6 +122,12 @@ export async function GET(req: NextRequest) {
           await db.updateLastBoostTime(country, now);
           for (const iid of result.boosted) {
             await db.updateItemStatus(country, iid, 'Active', now);
+          }
+        }
+        // 실패한 상품은 Error 상태로 변경
+        if (result.failed?.length > 0) {
+          for (const iid of result.failed) {
+            await db.updateItemStatus(country, iid, 'Error', now);
           }
         }
 

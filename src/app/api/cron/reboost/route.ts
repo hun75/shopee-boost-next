@@ -5,8 +5,8 @@ import * as db from '@/lib/db';
 // Vercel Cron: 4시간마다 자동 리부스트
 // vercel.json: { "crons": [{ "path": "/api/cron/reboost", "schedule": "0 */4 * * *" }] }
 
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 60_000; // 1분 간격 재시도
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 3_000; // 3초 간격 재시도 (Vercel 서버리스 타임아웃 방지)
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));

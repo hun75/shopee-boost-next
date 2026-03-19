@@ -57,6 +57,9 @@ export async function GET(req: NextRequest) {
     debug.main_account_id = mainToken.main_account_id;
     debug.has_refresh_token = true;
 
+    // ✅ 리프레시 토큰 체이닝: 각 나라 리프레시 후 새 토큰을 다음 나라에 전달
+    let latestRefreshToken = mainToken.refresh_token;
+
     for (const country of shopee.COUNTRIES) {
       try {
         const isActive = await db.getBoostActive(country);
@@ -84,21 +87,15 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // ✅ 각 나라마다 해당 shop_id로 개별 토큰 리프레시
+        // ✅ 각 나라마다 해당 shop_id로 개별 토큰 리프레시 (체이닝된 refresh_token 사용)
         const countryShopId = shopee.SHOPS[country];
         let countryToken: string;
         try {
-          const refreshed = await shopee.refreshAccessToken(mainToken.refresh_token, countryShopId);
+          const refreshed = await shopee.refreshAccessToken(latestRefreshToken, countryShopId);
           countryToken = refreshed.access_token;
-          // refresh_token이 갱신됐으면 DB에 저장
+          // 새 refresh_token을 다음 나라에 체이닝
           if (refreshed.refresh_token) {
-            const currentTokens = await db.loadTokens();
-            currentTokens._main_account = {
-              ...currentTokens._main_account,
-              refresh_token: refreshed.refresh_token,
-              updated_at: new Date().toISOString(),
-            };
-            await db.saveTokens(currentTokens);
+            latestRefreshToken = refreshed.refresh_token;
           }
         } catch (refreshErr: any) {
           results[country] = `TOKEN_REFRESH_FAIL: ${refreshErr.message?.slice(0, 60)}`;
@@ -131,6 +128,17 @@ export async function GET(req: NextRequest) {
         results[country] = `error: ${e.message?.slice(0, 60)}`;
         await db.addLog(country, '', 'auto_boost', 'fail', `실패: ${e.message?.slice(0, 50)}`);
       }
+    }
+
+    // ✅ 루프 종료 후 최종 refresh_token을 DB에 저장 (다음 cron 실행용)
+    if (latestRefreshToken !== mainToken.refresh_token) {
+      const finalTokens = await db.loadTokens();
+      finalTokens._main_account = {
+        ...finalTokens._main_account,
+        refresh_token: latestRefreshToken,
+        updated_at: new Date().toISOString(),
+      };
+      await db.saveTokens(finalTokens);
     }
 
     return NextResponse.json({ success: true, results, debug, timestamp: new Date().toISOString() });

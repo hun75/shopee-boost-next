@@ -63,10 +63,11 @@ export async function GET(req: NextRequest) {
     // ✅ 항상 토큰 리프레시 먼저 시도 (만료 여부와 무관하게)
     if (mainToken?.refresh_token) {
       try {
+        // Shopee token refresh는 항상 실제 shop_id 필요 (main_account 인증이어도)
+        const refreshShopId = mainToken.shop_id || shopee.SHOPS['TW'];
         const refreshed = await shopee.refreshAccessToken(
           mainToken.refresh_token,
-          mainToken.shop_id,
-          mainToken.main_account_id,
+          refreshShopId,
         );
 
         // 디버그: Shopee 리프레시 응답 원본

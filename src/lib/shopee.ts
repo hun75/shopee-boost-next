@@ -193,7 +193,7 @@ export async function exchangeCodeForToken(code: string, shopId?: number, mainAc
   return resp.json();
 }
 
-export async function refreshAccessToken(refreshToken: string, shopId?: number, mainAccountId?: number): Promise<any> {
+export async function refreshAccessToken(refreshToken: string, shopId: number): Promise<any> {
   const path = '/api/v2/auth/access_token/get';
   const timestamp = Math.floor(Date.now() / 1000);
   const baseString = `${PARTNER_ID}${path}${timestamp}`;
@@ -201,18 +201,10 @@ export async function refreshAccessToken(refreshToken: string, shopId?: number, 
 
   const url = `${API_HOST}${path}?partner_id=${PARTNER_ID}&timestamp=${timestamp}&sign=${sign}`;
 
-  // main_account 인증이면 merchant_id, shop 인증이면 shop_id 사용
-  const body: any = { refresh_token: refreshToken, partner_id: PARTNER_ID };
-  if (mainAccountId) {
-    body.merchant_id = mainAccountId;  // Shopee API는 merchant_id를 사용
-  } else if (shopId) {
-    body.shop_id = shopId;
-  }
-
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ refresh_token: refreshToken, partner_id: PARTNER_ID, shop_id: shopId }),
     cache: 'no-store',
   });
   const data = await resp.json();

@@ -201,10 +201,10 @@ export async function refreshAccessToken(refreshToken: string, shopId?: number, 
 
   const url = `${API_HOST}${path}?partner_id=${PARTNER_ID}&timestamp=${timestamp}&sign=${sign}`;
 
-  // main_account 인증이면 main_account_id, shop 인증이면 shop_id 사용
+  // main_account 인증이면 merchant_id, shop 인증이면 shop_id 사용
   const body: any = { refresh_token: refreshToken, partner_id: PARTNER_ID };
   if (mainAccountId) {
-    body.main_account_id = mainAccountId;
+    body.merchant_id = mainAccountId;  // Shopee API는 merchant_id를 사용
   } else if (shopId) {
     body.shop_id = shopId;
   }

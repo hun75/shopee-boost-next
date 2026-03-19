@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as shopee from '@/lib/shopee';
 import * as db from '@/lib/db';
 
+// GET /api/shopee/boost?action=allItems — 전체 부스트 아이템 조회
+export async function GET(req: NextRequest) {
+  const action = req.nextUrl.searchParams.get('action');
+  if (action === 'allItems') {
+    const items = await db.getAllItems();
+    return NextResponse.json(items);
+  }
+  return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+}
+
 // POST /api/shopee/boost — 부스트 시작/정지/등록/해제
 export async function POST(req: NextRequest) {
   try {

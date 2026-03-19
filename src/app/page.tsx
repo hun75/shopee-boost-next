@@ -20,8 +20,9 @@ function toKST(s: string | null) {
   if (!s) return '없음';
   try {
     const d = new Date(s);
-    d.setHours(d.getHours() + 9);
-    return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    // UTC 기준 +9시간 = KST
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    return `${String(kst.getUTCMonth()+1).padStart(2,'0')}/${String(kst.getUTCDate()).padStart(2,'0')} ${String(kst.getUTCHours()).padStart(2,'0')}:${String(kst.getUTCMinutes()).padStart(2,'0')}`;
   } catch { return s.slice(0, 16); }
 }
 

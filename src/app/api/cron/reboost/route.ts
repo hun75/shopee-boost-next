@@ -44,77 +44,18 @@ export async function GET(req: NextRequest) {
 
   const results: Record<string, any> = {};
   const debug: Record<string, any> = {};
+  const force = req.nextUrl.searchParams.get('force') === '1';
 
   try {
     const tokens = await db.loadTokens();
     const mainToken = tokens._main_account;
 
-    // 디버그: DB에 저장된 토큰 정보
-    debug.db_token = {
-      has_access_token: !!mainToken?.access_token,
-      access_token_preview: mainToken?.access_token?.slice(0, 15) + '...',
-      has_refresh_token: !!mainToken?.refresh_token,
-      refresh_token_preview: mainToken?.refresh_token?.slice(0, 15) + '...',
-      shop_id: mainToken?.shop_id,
-      main_account_id: mainToken?.main_account_id,
-      updated_at: mainToken?.updated_at,
-    };
-
-    // ✅ 항상 토큰 리프레시 먼저 시도 (만료 여부와 무관하게)
-    if (mainToken?.refresh_token) {
-      try {
-        // Shopee token refresh는 항상 실제 shop_id 필요 (main_account 인증이어도)
-        const refreshShopId = mainToken.shop_id || shopee.SHOPS['TW'];
-        const refreshed = await shopee.refreshAccessToken(
-          mainToken.refresh_token,
-          refreshShopId,
-        );
-
-        // 디버그: Shopee 리프레시 응답 원본
-        debug.refresh_response = {
-          has_access_token: !!refreshed?.access_token,
-          access_token_preview: refreshed?.access_token?.slice(0, 15) + '...',
-          has_refresh_token: !!refreshed?.refresh_token,
-          error: refreshed?.error || 'none',
-          message: refreshed?.message || 'none',
-          expire_in: refreshed?.expire_in,
-        };
-
-        if (refreshed?.access_token) {
-          const existingTokens = await db.loadTokens();
-          existingTokens._main_account = {
-            ...existingTokens._main_account,
-            access_token: refreshed.access_token,
-            refresh_token: refreshed.refresh_token || mainToken.refresh_token,
-            updated_at: new Date().toISOString(),
-          };
-          // 모든 국가 토큰도 갱신
-          for (const c of shopee.COUNTRIES) {
-            if (existingTokens[c]) {
-              existingTokens[c].access_token = refreshed.access_token;
-              if (refreshed.refresh_token) existingTokens[c].refresh_token = refreshed.refresh_token;
-            }
-          }
-          await db.saveTokens(existingTokens);
-          await db.addLog('SYSTEM', '', 'token_refresh', 'success', '토큰 리프레시 성공');
-          debug.refresh_status = 'SUCCESS';
-        } else {
-          debug.refresh_status = 'NO_ACCESS_TOKEN_IN_RESPONSE';
-        }
-      } catch (refreshErr: any) {
-        debug.refresh_status = 'ERROR';
-        debug.refresh_error = refreshErr.message;
-        await db.addLog('SYSTEM', '', 'token_refresh', 'fail', `토큰 리프레시 실패: ${refreshErr.message?.slice(0, 50)}`);
-      }
-    } else {
-      debug.refresh_status = 'NO_REFRESH_TOKEN';
+    if (!mainToken?.refresh_token) {
+      return NextResponse.json({ error: '리프레시 토큰 없음. 대시보드에서 재인증 필요.', results: {} });
     }
 
-    // 최신 토큰 다시 로드
-    const freshTokens = await db.loadTokens();
-    const token = freshTokens._main_account?.access_token;
-    debug.final_token_preview = token?.slice(0, 15) + '...';
-    if (!token) return NextResponse.json({ error: '토큰 없음 (refresh_token도 없음)', results: {} });
+    debug.main_account_id = mainToken.main_account_id;
+    debug.has_refresh_token = true;
 
     for (const country of shopee.COUNTRIES) {
       try {
@@ -126,19 +67,16 @@ export async function GET(req: NextRequest) {
 
         const items = await db.getItemsByCountry(country);
         if (items.length === 0) {
-          // 아이템 없으면 자동 비활성화
           await db.setBoostActive(country, false);
           results[country] = 'auto-stopped (no items)';
           continue;
         }
 
-        // 쿨타임 체크 (?force=1 이면 쿨타임 무시)
-        const force = req.nextUrl.searchParams.get('force') === '1';
+        // 쿨타임 체크
         if (!force) {
           const lastStr = await db.getLastBoostTime(country);
           if (lastStr) {
-            const lastDt = new Date(lastStr);
-            const elapsed = (Date.now() - lastDt.getTime()) / 1000 / 3600;
+            const elapsed = (Date.now() - new Date(lastStr).getTime()) / 1000 / 3600;
             if (elapsed < shopee.COOLDOWN_HOURS) {
               results[country] = `skipped (${elapsed.toFixed(1)}h < ${shopee.COOLDOWN_HOURS}h)`;
               continue;
@@ -146,12 +84,34 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // ✅ 각 나라마다 해당 shop_id로 개별 토큰 리프레시
+        const countryShopId = shopee.SHOPS[country];
+        let countryToken: string;
+        try {
+          const refreshed = await shopee.refreshAccessToken(mainToken.refresh_token, countryShopId);
+          countryToken = refreshed.access_token;
+          // refresh_token이 갱신됐으면 DB에 저장
+          if (refreshed.refresh_token) {
+            const currentTokens = await db.loadTokens();
+            currentTokens._main_account = {
+              ...currentTokens._main_account,
+              refresh_token: refreshed.refresh_token,
+              updated_at: new Date().toISOString(),
+            };
+            await db.saveTokens(currentTokens);
+          }
+        } catch (refreshErr: any) {
+          results[country] = `TOKEN_REFRESH_FAIL: ${refreshErr.message?.slice(0, 60)}`;
+          await db.addLog(country, '', 'token_refresh', 'fail', `${country} 토큰 리프레시 실패: ${refreshErr.message?.slice(0, 50)}`);
+          continue;
+        }
+
+        // 부스트 실행
         const itemIds = items.map((it: any) => it.item_id);
-        const result = await boostWithRetry(country, token, itemIds);
+        const result = await boostWithRetry(country, countryToken, itemIds);
         const now = new Date().toISOString();
         const boostedCount = result.boosted?.length || 0;
 
-        // ✅ 성공한 건이 있을 때만 쿨타임 업데이트 (실패 시 즉시 재시도 가능)
         if (boostedCount > 0) {
           await db.updateLastBoostTime(country, now);
           for (const iid of result.boosted) {
@@ -164,13 +124,12 @@ export async function GET(req: NextRequest) {
           `자동 부스트: ${boostedCount}/${itemIds.length}건 성공 | ${result.message || ''}`
         );
 
-        // 에러 상세 포함
         results[country] = boostedCount > 0
           ? `boosted ${boostedCount}/${itemIds.length}`
           : `FAILED 0/${itemIds.length}: ${result.raw_error || result.message || 'unknown'}`;
       } catch (e: any) {
-        results[country] = `error after ${MAX_RETRIES} retries: ${e.message}`;
-        await db.addLog(country, '', 'auto_boost', 'fail', `${MAX_RETRIES}회 재시도 후 실패: ${e.message?.slice(0, 50)}`);
+        results[country] = `error: ${e.message?.slice(0, 60)}`;
+        await db.addLog(country, '', 'auto_boost', 'fail', `실패: ${e.message?.slice(0, 50)}`);
       }
     }
 

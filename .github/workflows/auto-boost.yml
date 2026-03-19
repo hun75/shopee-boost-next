@@ -1,30 +1,26 @@
-name: Auto Boost (4시간마다)
+name: Auto Boost (매시간 체크)
 
 on:
   schedule:
-    # 4시간마다 실행: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
-    - cron: '0 */4 * * *'
+    # 매시간 실행 — 각 국가별 마지막 부스트 기준 4시간 경과 시 자동 리부스트
+    - cron: '0 * * * *'
   workflow_dispatch: # 수동 실행도 가능
 
 jobs:
   reboost:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger auto boost
+      - name: Trigger auto boost check
         run: |
-          echo "🚀 자동 부스트 시작: $(date)"
+          echo "🔍 부스트 체크: $(date)"
           RESPONSE=$(curl -s -w "\n%{http_code}" "https://shopee.koreain.com/api/cron/reboost")
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -n -1)
           echo "HTTP Status: $HTTP_CODE"
           echo "Response: $BODY"
           if [ "$HTTP_CODE" -ne 200 ]; then
-            echo "⚠️ 1차 시도 실패, 2분 후 재시도..."
+            echo "⚠️ 1차 실패, 2분 후 재시도..."
             sleep 120
-            RESPONSE2=$(curl -s -w "\n%{http_code}" "https://shopee.koreain.com/api/cron/reboost")
-            HTTP_CODE2=$(echo "$RESPONSE2" | tail -1)
-            BODY2=$(echo "$RESPONSE2" | head -n -1)
-            echo "재시도 HTTP Status: $HTTP_CODE2"
-            echo "재시도 Response: $BODY2"
+            curl -s "https://shopee.koreain.com/api/cron/reboost"
           fi
           echo "✅ 완료"

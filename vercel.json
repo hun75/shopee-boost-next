@@ -1,8 +1,2 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/reboost",
-      "schedule": "0 */4 * * *"
-    }
-  ]
 }

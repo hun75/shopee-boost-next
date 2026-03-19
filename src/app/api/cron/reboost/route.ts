@@ -100,32 +100,39 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // 쿨타임 체크
-        const lastStr = await db.getLastBoostTime(country);
-        if (lastStr) {
-          const lastDt = new Date(lastStr);
-          const elapsed = (Date.now() - lastDt.getTime()) / 1000 / 3600;
-          if (elapsed < shopee.COOLDOWN_HOURS) {
-            results[country] = `skipped (${elapsed.toFixed(1)}h < ${shopee.COOLDOWN_HOURS}h)`;
-            continue;
+        // 쿨타임 체크 (?force=1 이면 쿨타임 무시)
+        const force = req.nextUrl.searchParams.get('force') === '1';
+        if (!force) {
+          const lastStr = await db.getLastBoostTime(country);
+          if (lastStr) {
+            const lastDt = new Date(lastStr);
+            const elapsed = (Date.now() - lastDt.getTime()) / 1000 / 3600;
+            if (elapsed < shopee.COOLDOWN_HOURS) {
+              results[country] = `skipped (${elapsed.toFixed(1)}h < ${shopee.COOLDOWN_HOURS}h)`;
+              continue;
+            }
           }
         }
 
         const itemIds = items.map((it: any) => it.item_id);
         const result = await boostWithRetry(country, token, itemIds);
         const now = new Date().toISOString();
+        const boostedCount = result.boosted?.length || 0;
 
-        await db.updateLastBoostTime(country, now);
-        for (const iid of result.boosted || itemIds) {
-          await db.updateItemStatus(country, iid, 'Active', now);
+        // ✅ 성공한 건이 있을 때만 쿨타임 업데이트 (실패 시 즉시 재시도 가능)
+        if (boostedCount > 0) {
+          await db.updateLastBoostTime(country, now);
+          for (const iid of result.boosted) {
+            await db.updateItemStatus(country, iid, 'Active', now);
+          }
         }
 
         await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost',
-          result.success ? 'success' : 'partial',
-          `자동 부스트: ${result.boosted?.length || 0}/${itemIds.length}건 성공`
+          boostedCount > 0 ? 'success' : 'fail',
+          `자동 부스트: ${boostedCount}/${itemIds.length}건 성공`
         );
 
-        results[country] = `boosted ${result.boosted?.length || 0}/${itemIds.length}`;
+        results[country] = `boosted ${boostedCount}/${itemIds.length}`;
       } catch (e: any) {
         results[country] = `error after ${MAX_RETRIES} retries: ${e.message}`;
         await db.addLog(country, '', 'auto_boost', 'fail', `${MAX_RETRIES}회 재시도 후 실패: ${e.message?.slice(0, 50)}`);

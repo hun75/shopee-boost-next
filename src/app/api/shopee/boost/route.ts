@@ -20,23 +20,44 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case 'start': {
-        // 부스트 시작
+        // 부스트 시작 — 해당 국가의 access_token 사용
         const tokens = await db.loadTokens();
-        const mainToken = tokens._main_account;
-        if (!mainToken?.access_token) {
-          return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+        const countryToken = tokens[country]?.access_token;
+        const mainToken = tokens._main_account?.access_token;
+        const accessToken = countryToken || mainToken;
+
+        if (!accessToken) {
+          return NextResponse.json({ error: '인증 필요. 대시보드에서 Shopee 인증을 진행해주세요.' }, { status: 401 });
         }
 
         const ids = itemIds || [];
-        const result = await shopee.boostItems(country, mainToken.access_token, ids);
+        if (ids.length === 0) {
+          return NextResponse.json({ error: '부스트할 상품이 없습니다' }, { status: 400 });
+        }
+
+        const result = await shopee.boostItems(country, accessToken, ids);
         const now = new Date().toISOString();
+        const boostedCount = result.boosted?.length || 0;
+        const alreadyBoosted = result.raw_error === 'product.error_busi';
 
         await db.setBoostActive(country, true);
         await db.updateLastBoostTime(country, now);
-        for (const iid of result.boosted || ids) {
-          await db.updateItemStatus(country, iid, 'Active', now);
+
+        if (boostedCount > 0) {
+          for (const iid of result.boosted) {
+            await db.updateItemStatus(country, iid, 'Active', now);
+          }
+          await db.addLog(country, ids.slice(0, 3).join(','), 'manual_boost', 'success', `부스트 시작: ${boostedCount}/${ids.length}건 성공`);
+        } else if (alreadyBoosted) {
+          for (const iid of ids) {
+            await db.updateItemStatus(country, iid, 'Active', now);
+          }
+          await db.addLog(country, ids.slice(0, 3).join(','), 'manual_boost', 'success', `이미 부스트 활성 중 (${ids.length}건)`);
+        } else {
+          await db.addLog(country, ids.slice(0, 3).join(','), 'manual_boost', 'fail',
+            `부스트 실패: ${result.raw_error || result.message || 'unknown'}`);
         }
-        await db.addLog(country, ids.slice(0, 3).join(','), 'manual_boost', 'success', `부스트 시작: ${ids.length}개`);
+
         return NextResponse.json({ success: true, result });
       }
 

@@ -195,7 +195,11 @@ export async function refreshAccessToken(refreshToken: string, shopId: number): 
     body: JSON.stringify({ refresh_token: refreshToken, partner_id: PARTNER_ID, shop_id: shopId }),
     cache: 'no-store',
   });
-  return resp.json();
+  const data = await resp.json();
+  if (data.error) {
+    throw new Error(`Token refresh failed: ${data.error} - ${data.message || ''}`);
+  }
+  return data;
 }
 
 // shop_id → country 매핑

@@ -19,45 +19,50 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: tokenData.error, message: tokenData.message });
     }
 
-    if (tokenData.access_token) {
-      const existingTokens = await db.loadTokens();
+    if (!tokenData.access_token) {
+      return NextResponse.json({ error: 'no_token' });
+    }
+
+    const existingTokens = await db.loadTokens();
+
+    // 메인 계정 인증 시: 모든 국가에 동일 토큰 + 각 국가의 실제 shop_id 저장
+    if (mainAccountId) {
       existingTokens._main_account = {
         access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token,
-        shop_id: shopId,
-        main_account_id: mainAccountId,
         expire_in: tokenData.expire_in,
         updated_at: new Date().toISOString(),
       };
 
-      // 국가 매핑
-      if (shopId) {
-        const country = shopee.getCountryForShopId(shopId);
-        if (country) {
-          existingTokens[country] = {
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
-            shop_id: shopId,
-          };
-        }
+      for (const country of shopee.COUNTRIES) {
+        const countryShopId = shopee.SHOPS[country];
+        existingTokens[country] = {
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          shop_id: countryShopId,
+        };
       }
-
-      // 메인 계정이면 모든 국가에 동일 토큰 저장
-      if (mainAccountId) {
-        for (const c of shopee.COUNTRIES) {
-          existingTokens[c] = {
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
-            main_account_id: mainAccountId,
-          };
-        }
+    }
+    // 개별 shop 인증 시: 해당 국가만 저장
+    else if (shopId) {
+      const country = shopee.getCountryForShopId(shopId);
+      if (country) {
+        existingTokens[country] = {
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          shop_id: shopId,
+        };
       }
-
-      await db.saveTokens(existingTokens);
-      return NextResponse.json({ success: true });
+      existingTokens._main_account = {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        expire_in: tokenData.expire_in,
+        updated_at: new Date().toISOString(),
+      };
     }
 
-    return NextResponse.json({ error: 'no_token' });
+    await db.saveTokens(existingTokens);
+    return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

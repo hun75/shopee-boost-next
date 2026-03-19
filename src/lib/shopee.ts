@@ -194,43 +194,48 @@ export async function exchangeCodeForToken(code: string, shopId?: number, mainAc
 }
 
 /**
- * 토큰 리프레시
- * - 메인 계정 인증(merchantId 있음): /api/v2/auth/merchant/access_token/get
- * - 개별 shop 인증(shopId 있음): /api/v2/auth/access_token/get
+ * 토큰 리프레시 — shop_id 기반
+ *
+ * Shopee API: POST /api/v2/auth/access_token/get
+ * Body: { partner_id, refresh_token, shop_id }
+ *
+ * @returns { access_token, refresh_token, expire_in, ... }
  */
-export async function refreshAccessToken(
-  refreshToken: string,
-  opts: { shopId?: number; merchantId?: number }
-): Promise<any> {
-  // 메인 계정이면 merchant 전용 엔드포인트
-  const isMerchant = !!opts.merchantId;
-  const path = isMerchant
-    ? '/api/v2/auth/merchant/access_token/get'
-    : '/api/v2/auth/access_token/get';
+export async function refreshAccessToken(refreshToken: string, shopId: number): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expire_in: number;
+}> {
+  if (!refreshToken) throw new Error('refresh_token이 없습니다');
+  if (!shopId) throw new Error('shop_id가 없습니다');
 
+  const path = '/api/v2/auth/access_token/get';
   const timestamp = Math.floor(Date.now() / 1000);
   const baseString = `${PARTNER_ID}${path}${timestamp}`;
   const sign = crypto.createHmac('sha256', PARTNER_KEY).update(baseString).digest('hex');
 
   const url = `${API_HOST}${path}?partner_id=${PARTNER_ID}&timestamp=${timestamp}&sign=${sign}`;
 
-  const body: any = { refresh_token: refreshToken, partner_id: PARTNER_ID };
-  if (isMerchant) {
-    body.merchant_id = opts.merchantId;
-  } else if (opts.shopId) {
-    body.shop_id = opts.shopId;
-  }
-
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      partner_id: PARTNER_ID,
+      refresh_token: refreshToken,
+      shop_id: shopId,
+    }),
     cache: 'no-store',
   });
+
   const data = await resp.json();
+
   if (data.error) {
-    throw new Error(`Token refresh failed: ${data.error} - ${data.message || ''}`);
+    throw new Error(`${data.error} - ${data.message || ''}`);
   }
+  if (!data.access_token) {
+    throw new Error('응답에 access_token이 없습니다');
+  }
+
   return data;
 }
 

@@ -6,8 +6,8 @@
 import crypto from 'crypto';
 
 // ─── 설정 ───
-const PARTNER_ID = parseInt(process.env.SHOPEE_PARTNER_ID || '2031482');
-const PARTNER_KEY = process.env.SHOPEE_PARTNER_KEY || '';
+const PARTNER_ID = 2031482;
+const PARTNER_KEY = 'shpk554a515675436c534d4e6572646744754c55595745785a4559574e736976';
 const API_HOST = 'https://partner.shopeemobile.com';
 
 // 국가별 shop_id

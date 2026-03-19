@@ -199,7 +199,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { if (loggedIn) { fetch('/api/shopee/auth', { method: 'POST' }).then(r => r.json()).then(setAuth).catch(() => {}); loadAll(); fetch('/api/shopee/auth-alerts').then(r => r.json()).then(setAuthAlerts).catch(() => {}); } }, [loggedIn, loadAll]);
-  useEffect(() => { if (loggedIn) load(sel); }, [sel, loggedIn, load]);
+  useEffect(() => { if (loggedIn) { load(sel); if (showLogs) loadLogs(sel); } }, [sel, loggedIn, load]);
 
   const sync = async () => {
     setSyncing(true);

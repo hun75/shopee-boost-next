@@ -137,8 +137,8 @@ export async function GET(req: NextRequest) {
         }
 
         if (alreadyBoosted) {
-          await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost', 'success',
-            `이미 부스트 활성 중 (${itemIds.length}건)`);
+          await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost', 'info',
+            `쿨타임 중 — 부스트 슬롯 사용 중 (${itemIds.length}건, 4시간 후 자동 재시도)`);
           results[country] = `already boosted (${itemIds.length} items active)`;
         } else {
           await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const COUNTRIES = ['TW', 'MY', 'VN', 'TH', 'PH', 'SG', 'BR', 'MX'] as const;
 const NAMES: Record<string, string> = {
@@ -149,12 +149,14 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 }
 
 // ═══ 팝업 국가 상세 ═══
-function PopupCountryDetail({ country, selectedProduct, onAdd, onRemove, items }: {
+function PopupCountryDetail({ country, selectedProduct, onAdd, onRemove, items, pendingBoosts, onCancelPending }: {
   country: string;
   selectedProduct: { itemId: string; itemName: string } | null;
   onAdd: (country: string, itemId: string, itemName: string) => void;
   onRemove: (country: string, itemId: string, itemName: string) => void;
   items: any[];
+  pendingBoosts: Record<string, { country: string; itemId: string; itemName: string; fireAt: number }>;
+  onCancelPending: (key: string) => void;
 }) {
   const countryItems = items.filter((i: any) => i.country === country);
   const cnt = countryItems.length;
@@ -182,7 +184,13 @@ function PopupCountryDetail({ country, selectedProduct, onAdd, onRemove, items }
         </div>
       ) : (
         <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
-          {countryItems.map((item: any) => (
+          {countryItems.map((item: any) => {
+            const key = `${country}_${item.item_id}`;
+            const pending = pendingBoosts[key];
+            const remainSec = pending ? Math.max(0, Math.ceil((pending.fireAt - Date.now()) / 1000)) : 0;
+            const remainMin = Math.floor(remainSec / 60);
+            const remainSecMod = remainSec % 60;
+            return (
             <div key={item.item_id} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f5f5f5', gap: 8 }}>
               <button onClick={() => onRemove(country, item.item_id, item.item_name || '')}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#EE4D2D', flexShrink: 0 }}>🗑️</button>
@@ -190,9 +198,20 @@ function PopupCountryDetail({ country, selectedProduct, onAdd, onRemove, items }
                 <div style={{ fontSize: 11, color: '#999' }}>ID: {item.item_id}</div>
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.item_name || 'Unknown'}</div>
               </div>
-              <span style={{ fontSize: 11, color: item.status === 'Active' ? '#4CAF50' : '#FF9800', fontWeight: 600, flexShrink: 0 }}>{item.status}</span>
+              {pending ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: '#E65100', fontWeight: 700, background: '#FFF3E0', padding: '2px 8px', borderRadius: 4 }}>
+                    ⏳ {remainMin}:{String(remainSecMod).padStart(2, '0')}
+                  </span>
+                  <button onClick={() => onCancelPending(key)}
+                    style={{ fontSize: 10, padding: '3px 8px', background: '#ffebee', color: '#c62828', border: '1px solid #ef9a9a', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>취소</button>
+                </div>
+              ) : (
+                <span style={{ fontSize: 11, color: item.status === 'Active' ? '#4CAF50' : '#FF9800', fontWeight: 600, flexShrink: 0 }}>{item.status}</span>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -237,6 +256,10 @@ export default function Dashboard() {
   const [selectedProduct, setSelectedProduct] = useState<{ itemId: string; itemName: string } | null>(null);
   const [popupCountry, setPopupCountry] = useState(sel);
   const [toast, setToast] = useState<string | null>(null);
+  // 5분 대기 부스트 타이머
+  const [pendingBoosts, setPendingBoosts] = useState<Record<string, { country: string; itemId: string; itemName: string; fireAt: number }>>({});
+  const pendingTimersRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
   // 세션 확인
   useEffect(() => {
@@ -277,8 +300,21 @@ export default function Dashboard() {
 
   const sync = async () => {
     setSyncing(true);
-    try { await fetch(`/api/shopee/items?country=${sel}`, { method: 'POST' }); await load(sel); }
-    catch (e: any) { alert(`❌ ${e.message}`); } finally { setSyncing(false); }
+    try {
+      const r = await fetch(`/api/shopee/items?country=${sel}`, { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok || j.error) {
+        alert(`❌ ${sel} 동기화 실패: ${j.error || '알 수 없는 오류'}`);
+      } else {
+        setToast(`✅ ${sel} 상품 ${j.count}개 동기화 완료`);
+        setTimeout(() => setToast(null), 3000);
+      }
+      await load(sel);
+    } catch (e: any) {
+      alert(`❌ 네트워크 오류: ${e.message}`);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const act = async (action: string, country: string, extra: any = {}) => {
@@ -288,21 +324,77 @@ export default function Dashboard() {
     return j;
   };
 
-  // 팝업에서 추가/삭제 시 자동 부스트
+  // 5분 대기 카운트다운 갱신 (매초)
+  useEffect(() => {
+    const hasAny = Object.keys(pendingBoosts).length > 0;
+    if (hasAny && !countdownRef.current) {
+      countdownRef.current = setInterval(() => {
+        setPendingBoosts(prev => ({ ...prev })); // 리렌더 트리거
+      }, 1000);
+    } else if (!hasAny && countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    return () => { if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; } };
+  }, [Object.keys(pendingBoosts).length]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      Object.values(pendingTimersRef.current).forEach(t => clearTimeout(t));
+    };
+  }, []);
+
+  // 팝업에서 추가 시 → 등록만 하고 5분 대기 후 자동 부스트
   const addToBoost = async (country: string, itemId: string, itemName: string) => {
     await act('register', country, { itemId, itemName });
-    // 자동으로 부스트 활성화 (아이템 있으면 자동 시작)
-    const items = await fetch(`/api/shopee/items?country=${country}`).then(r => r.json());
-    const boosted = items?.boostedItems || [];
-    if (boosted.length > 0) {
-      await act('start', country, { itemIds: boosted.map((i: any) => i.item_id) });
-    }
-    setToast(`✅ ${itemName.slice(0, 25)}... → ${country} 부스트 추가`);
-    setTimeout(() => setToast(null), 3000);
+    const key = `${country}_${itemId}`;
+    const DELAY_MS = 5 * 60 * 1000; // 5분
+    const fireAt = Date.now() + DELAY_MS;
+
+    // 5분 후 자동 부스트 실행 타이머
+    const timer = setTimeout(async () => {
+      try {
+        const items = await fetch(`/api/shopee/items?country=${country}`).then(r => r.json());
+        const boosted = items?.boostedItems || [];
+        if (boosted.length > 0) {
+          await act('start', country, { itemIds: boosted.map((i: any) => i.item_id) });
+          setToast(`🚀 ${country} 부스트 자동 시작! (${boosted.length}개 상품)`);
+        }
+      } catch { setToast(`❌ ${country} 자동 부스트 실패`); }
+      setTimeout(() => setToast(null), 4000);
+      // 완료 후 pending에서 제거
+      setPendingBoosts(prev => { const next = { ...prev }; delete next[key]; return next; });
+      delete pendingTimersRef.current[key];
+      await load(sel); await loadAll();
+    }, DELAY_MS);
+
+    pendingTimersRef.current[key] = timer;
+    setPendingBoosts(prev => ({ ...prev, [key]: { country, itemId, itemName, fireAt } }));
+    setToast(`⏳ ${itemName.slice(0, 25)}... → ${country} 등록 완료! 5분 후 자동 부스트`);
+    setTimeout(() => setToast(null), 4000);
     await load(sel); await loadAll();
   };
 
+  // 대기 중인 부스트 즉시 취소
+  const cancelPendingBoost = (key: string) => {
+    if (pendingTimersRef.current[key]) {
+      clearTimeout(pendingTimersRef.current[key]);
+      delete pendingTimersRef.current[key];
+    }
+    setPendingBoosts(prev => { const next = { ...prev }; delete next[key]; return next; });
+    setToast('🛑 대기 중인 부스트가 취소되었습니다');
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const removeFromBoost = async (country: string, itemId: string, itemName: string) => {
+    // 대기 중인 타이머가 있으면 함께 취소
+    const key = `${country}_${itemId}`;
+    if (pendingTimersRef.current[key]) {
+      clearTimeout(pendingTimersRef.current[key]);
+      delete pendingTimersRef.current[key];
+      setPendingBoosts(prev => { const next = { ...prev }; delete next[key]; return next; });
+    }
     await act('unregister', country, { itemId, itemName });
     setToast(`🗑️ ${itemName.slice(0, 25)}... → ${country} 부스트 해제`);
     setTimeout(() => setToast(null), 3000);
@@ -404,6 +496,8 @@ export default function Dashboard() {
               onAdd={addToBoost}
               onRemove={removeFromBoost}
               items={allItems}
+              pendingBoosts={pendingBoosts}
+              onCancelPending={cancelPendingBoost}
             />
 
             {/* 닫기 */}

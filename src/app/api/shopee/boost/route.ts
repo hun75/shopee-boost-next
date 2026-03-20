@@ -20,14 +20,39 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case 'start': {
-        // 부스트 시작 — 해당 국가의 access_token 사용
+        // ── Shop-level 토큰 검증 + 리프레시 (국가별 shop_id 기반) ──
         const tokens = await db.loadTokens();
-        const countryToken = tokens[country]?.access_token;
-        const mainToken = tokens._main_account?.access_token;
-        const accessToken = countryToken || mainToken;
+        const shopId = tokens[country]?.shop_id || shopee.SHOPS[country];
+        if (!shopId) {
+          return NextResponse.json({ error: `${country}: shop_id가 없습니다. 먼저 인증해주세요.` }, { status: 401 });
+        }
 
-        if (!accessToken) {
-          return NextResponse.json({ error: '인증 필요. 대시보드에서 Shopee 인증을 진행해주세요.' }, { status: 401 });
+        const refreshToken = tokens[country]?.refresh_token || tokens._main_account?.refresh_token;
+        if (!refreshToken) {
+          return NextResponse.json({ error: `${country}: 인증이 필요합니다. 대시보드에서 Shopee 인증을 진행해주세요.` }, { status: 401 });
+        }
+
+        // ── 토큰 리프레시 (cron과 동일한 방식) ──
+        let accessToken: string;
+        try {
+          const refreshed = await shopee.refreshAccessToken(refreshToken, shopId);
+          accessToken = refreshed.access_token;
+
+          tokens[country] = {
+            ...tokens[country],
+            access_token: refreshed.access_token,
+            refresh_token: refreshed.refresh_token,
+            shop_id: shopId,
+            updated_at: new Date().toISOString(),
+          };
+          await db.saveTokens(tokens);
+          await db.setAuthRequired(country, false);
+        } catch (refreshErr: any) {
+          const countryName = shopee.COUNTRY_NAMES[country] || country;
+          await db.setAuthRequired(country, true, `${countryName} 토큰이 만료되었습니다. 다시 샵 연동을 진행해 주세요.`);
+          return NextResponse.json({
+            error: `${country} 토큰 리프레시 실패: ${refreshErr.message?.slice(0, 80)}. 재인증이 필요합니다.`
+          }, { status: 401 });
         }
 
         const ids = itemIds || [];

@@ -352,21 +352,27 @@ export default function Dashboard() {
     const DELAY_MS = 5 * 60 * 1000; // 5분
     const fireAt = Date.now() + DELAY_MS;
 
-    // 5분 후 자동 부스트 실행 타이머
+    // 5분 후 자동 부스트 실행 타이머 (현재 화면을 건드리지 않음!)
     const timer = setTimeout(async () => {
       try {
-        const items = await fetch(`/api/shopee/items?country=${country}`).then(r => r.json());
-        const boosted = items?.boostedItems || [];
+        const itemsResp = await fetch(`/api/shopee/items?country=${country}`).then(r => r.json());
+        const boosted = itemsResp?.boostedItems || [];
         if (boosted.length > 0) {
-          await act('start', country, { itemIds: boosted.map((i: any) => i.item_id) });
-          setToast(`🚀 ${country} 부스트 자동 시작! (${boosted.length}개 상품)`);
+          const r = await fetch('/api/shopee/boost', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'start', country, itemIds: boosted.map((i: any) => i.item_id) }),
+          });
+          const j = await r.json();
+          if (j.error) { setToast(`❌ ${country} 부스트 실패: ${j.error}`); }
+          else { setToast(`🚀 ${country} 부스트 자동 시작! (${boosted.length}개 상품)`); }
         }
       } catch { setToast(`❌ ${country} 자동 부스트 실패`); }
       setTimeout(() => setToast(null), 4000);
-      // 완료 후 pending에서 제거
+      // 완료 후 pending에서 제거 + 사이드바 데이터만 갱신 (현재 화면 안 건드림)
       setPendingBoosts(prev => { const next = { ...prev }; delete next[key]; return next; });
       delete pendingTimersRef.current[key];
-      await load(sel); await loadAll();
+      await loadAll();
     }, DELAY_MS);
 
     pendingTimersRef.current[key] = timer;

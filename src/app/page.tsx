@@ -450,50 +450,73 @@ export default function Dashboard() {
       </aside>
 
       {/* ===== 메인 ===== */}
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 24px', borderBottom: '1px solid #eee', background: '#fff' }}>
-          <span style={{ fontSize: 36 }}>🤖</span>
-          <div><h1 style={{ fontSize: 22, fontWeight: 700, color: '#333' }}>쇼피 에이전트</h1><p style={{ fontSize: 12, color: '#999' }}>크로스보더 Shopee 관리 솔루션</p></div>
+      <main style={{ flex: 1, overflow: 'auto', background: '#f8f9fa' }}>
+        {/* 헤더 */}
+        <div style={{ padding: '20px 32px 0', background: '#fff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 32 }}>🤖</span>
+              <div><h1 style={{ fontSize: 20, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>쇼피 에이전트</h1><p style={{ fontSize: 12, color: '#999', margin: 0 }}>크로스보더 Shopee 관리 솔루션</p></div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={sync} disabled={syncing} style={{ padding: '8px 16px', background: '#fff', border: '1px solid #ddd', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: syncing ? 'not-allowed' : 'pointer', color: '#555' }}>
+                {syncing ? '⏳ 동기화 중...' : '🔄 상품 동기화'}
+              </button>
+              <button onClick={() => { setPopupCountry(sel); setSelectedProduct(null); setBoostManageOpen(true); }} style={{ padding: '8px 16px', background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                ⚡ 부스트 설정
+              </button>
+            </div>
+          </div>
+
+          {/* 국가 탭 — pill 스타일 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 16 }}>
+            <span style={{ fontSize: 13, color: '#999', marginRight: 4 }}>🌐 지역 선택:</span>
+            {COUNTRIES.map(c => (
+              <button key={c} onClick={() => setSel(c)} style={{
+                padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                borderRadius: 20, border: sel === c ? `2px solid ${CC[c].tx}` : '1px solid #e0e0e0',
+                background: sel === c ? CC[c].bg : '#fff', color: sel === c ? CC[c].tx : '#888',
+              }}>{c}</button>
+            ))}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 3, padding: '0 24px', borderBottom: '1px solid #eee', background: '#fff' }}>
-          {COUNTRIES.map(c => (
-            <button key={c} onClick={() => setSel(c)} style={{
-              padding: '10px 16px', fontSize: 13, border: 'none', cursor: 'pointer', borderRadius: '8px 8px 0 0',
-              fontWeight: sel === c ? 700 : 500, background: sel === c ? CC[c].bg : 'transparent', color: sel === c ? CC[c].tx : '#999',
-              borderBottom: sel === c ? `3px solid ${CC[c].tx}` : '3px solid transparent',
-              boxShadow: sel === c ? '0 2px 8px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.15s',
-            }}>{NAMES[c]}</button>
-          ))}
-        </div>
-        <div style={{ padding: '16px 24px' }}>
+
+        {/* 스탯 바 + 부스트 상태 */}
+        <div style={{ padding: '16px 32px' }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            {/* 전체 상품 */}
+            <div style={{ flex: 1, background: '#fff', borderRadius: 10, padding: '14px 18px', border: '1px solid #eee' }}>
+              <div style={{ fontSize: 11, color: '#999', fontWeight: 500 }}>📦 전체 상품</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#1a1a2e', marginTop: 4 }}>{synced}<span style={{ fontSize: 13, fontWeight: 400, color: '#999' }}>개</span></div>
+            </div>
+            {/* 부스트 설정 */}
+            <div style={{ flex: 1, background: '#fff', borderRadius: 10, padding: '14px 18px', border: '1px solid #eee' }}>
+              <div style={{ fontSize: 11, color: '#999', fontWeight: 500 }}>⚡ 부스트 설정</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#2563EB', marginTop: 4 }}>{totalReg}<span style={{ fontSize: 13, fontWeight: 400, color: '#999' }}>/{MAX_SLOTS}</span></div>
+            </div>
+            {/* 부스트 활성 상태 */}
+            <div style={{ flex: 2, background: data?.isActive ? '#f0fdf4' : '#fff', borderRadius: 10, padding: '14px 18px', border: `1px solid ${data?.isActive ? '#bbf7d0' : '#eee'}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 11, color: '#999', fontWeight: 500 }}>{data?.isActive ? '🟢 부스트 활성' : '⏸️ 부스트 비활성'}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: data?.isActive ? '#15803d' : '#999', marginTop: 4 }}>
+                    {data?.isActive ? `마지막: ${toKST(data?.lastBoost)}` : '설정된 상품이 없거나 비활성'}
+                  </div>
+                </div>
+                {data?.isActive && <span style={{ background: '#22c55e', width: 8, height: 8, borderRadius: '50%', display: 'inline-block', animation: 'pulse 2s infinite' }} />}
+              </div>
+            </div>
+          </div>
+
+          {/* 검색 + 정렬 */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <input type="text" placeholder="🔍 상품명, 상품ID 검색..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1, padding: '10px 14px', border: '1px solid #e0e0e0', borderRadius: 8, fontSize: 13, outline: 'none', background: '#fff' }} />
+            <select value={sort} onChange={e => setSort(e.target.value)} style={{ padding: '10px 14px', border: '1px solid #e0e0e0', borderRadius: 8, fontSize: 13, background: '#fff', color: '#555' }}>
+              <option value="name">이름순</option><option value="price">가격순</option><option value="stock">재고순</option>
+            </select>
+          </div>
           {loading && !data ? <div style={{ textAlign: 'center', padding: 80, color: '#999' }}>로딩 중...</div> : (
             <>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                {[
-                  { val: synced, lbl: '📦 전체 상품', border: '#607D8B' },
-                  { val: `${totalReg}/${MAX_SLOTS}`, lbl: '⚡ 부스트 설정', border: '#2196F3' },
-                  { val: data?.counts?.Active || 0, lbl: '🟢 활성 중', border: '#4CAF50' },
-                ].map((c, i) => (
-                  <div key={i} style={{ flex: 1, background: '#fff', border: '1px solid #eee', borderLeft: `3px solid ${c.border}`, borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 700 }}>{c.val}</div><div style={{ fontSize: 10, color: '#999' }}>{c.lbl}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#fff', border: '1px solid #eee', borderRadius: 8, marginBottom: 12 }}>
-                  <div style={{ fontSize: 13 }}>
-                    {data?.isActive ? <span>🟢 <b>부스트 활성</b> · {totalReg}개 · 마지막: {toKST(data?.lastBoost)}</span> : <span>⏸️ <b>부스트 비활성</b>{totalReg > 0 ? ` · ${totalReg}개` : ''}</span>}
-                  </div>
-                  <button onClick={() => { setPopupCountry(sel); setSelectedProduct(null); setBoostManageOpen(true); }} style={{ padding: '8px 20px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>⚡ 부스트 설정</button>
-                </div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                <input type="text" placeholder="상품명, 상품ID 검색..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 3, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, outline: 'none' }} />
-                <select value={sort} onChange={e => setSort(e.target.value)} style={{ flex: 1, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}>
-                  <option value="name">이름순</option><option value="price">가격순</option><option value="stock">재고순</option>
-                </select>
-                <button onClick={sync} disabled={syncing} style={{ flex: 1, padding: '8px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.6 : 1 }}>
-                  {syncing ? '📦 동기화 중...' : '🔄 상품 동기화'}
-                </button>
-              </div>
               {filtered.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 60, color: '#999' }}>📭 상품이 없습니다<br/><small>🔄 상품 동기화를 클릭하세요</small></div>
               ) : (

@@ -415,38 +415,38 @@ export default function Dashboard() {
       )}
 
       {/* ===== 좌측 사이드바 ===== */}
-      <aside style={{ width: 240, background: '#fff', borderRight: '1px solid #eee', padding: 20, flexShrink: 0, overflowY: 'auto' }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>🔑 메인 계정 인증</h3>
-        <p style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>한번 로그인으로 8개국 전체 인증</p>
+      <aside style={{ width: 260, background: '#fff', borderRight: '1px solid #eee', padding: '24px 20px', flexShrink: 0, overflowY: 'auto' }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: '#1a1a2e' }}>🔑 메인 계정 인증</h3>
+        <p style={{ fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 1.5 }}>한번 로그인으로 8개국 전체 인증</p>
         {hasAuth ? (
-          <div style={{ padding: '6px 12px', background: '#d4edda', color: '#155724', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>✅ 인증 완료!</div>
+          <div style={{ padding: '8px 14px', background: '#f0fdf4', color: '#15803d', borderRadius: 8, fontSize: 13, fontWeight: 500, marginBottom: 10 }}>✅ 인증 완료</div>
         ) : (
-          <div style={{ padding: '6px 12px', background: '#fff3cd', color: '#856404', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>❌ 미인증</div>
+          <div style={{ padding: '8px 14px', background: '#fffbeb', color: '#92400e', borderRadius: 8, fontSize: 13, fontWeight: 500, marginBottom: 10 }}>❌ 미인증</div>
         )}
-        <button onClick={doAuth} style={{ display: 'block', width: '100%', padding: '8px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 12, background: hasAuth ? '#4CAF50' : '#EE4D2D', color: '#fff' }}>
+        <button onClick={doAuth} style={{ display: 'block', width: '100%', padding: '10px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 16, background: hasAuth ? '#4CAF50' : '#EE4D2D', color: '#fff' }}>
           {hasAuth ? '🔄 재인증' : '🔐 인증하기'}
         </button>
-        <p style={{ fontSize: 11, color: '#999', marginBottom: 6 }}>국가별 인증:</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 16 }}>
-          {COUNTRIES.map(c => (<div key={c} style={{ textAlign: 'center', padding: '4px', background: '#f8f9fa', borderRadius: 4, fontSize: 11 }}>{!!countryAuth[c] ? '✅' : '❌'} <b>{c}</b></div>))}
+        <p style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>국가별 인증 상태</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 20 }}>
+          {COUNTRIES.map(c => (<div key={c} style={{ textAlign: 'center', padding: '6px 2px', background: '#f8f9fa', borderRadius: 6, fontSize: 12, lineHeight: 1.4 }}>{!!countryAuth[c] ? '✅' : '❌'} {c}</div>))}
         </div>
-        <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>📊 전체 부스트 현황</h3>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 11, color: '#999' }}>⚡ 설정됨</div><div style={{ fontSize: 22, fontWeight: 800 }}>{allItems.length}개</div></div>
-          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 11, color: '#999' }}>🟢 활성 중</div><div style={{ fontSize: 22, fontWeight: 800 }}>{totalActive}개</div></div>
+        <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '16px 0' }} />
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1a1a2e' }}>📊 부스트 현황</h3>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+          <div style={{ flex: 1, textAlign: 'center', padding: 10, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 12, color: '#888' }}>⚡ 설정됨</div><div style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>{allItems.length}</div></div>
+          <div style={{ flex: 1, textAlign: 'center', padding: 10, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 12, color: '#888' }}>🟢 활성</div><div style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>{totalActive}</div></div>
         </div>
-        <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>⚙️ 시스템 정보</h3>
-        <table style={{ width: '100%', fontSize: 11, color: '#666', borderCollapse: 'collapse' }}>
+        <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '16px 0' }} />
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1a1a2e' }}>⚙️ 시스템 정보</h3>
+        <table style={{ width: '100%', fontSize: 13, color: '#666', borderCollapse: 'collapse' }}>
           <tbody>
-            {[['국가', `${COUNTRIES.length}개국`], ['슬롯', `${MAX_SLOTS}개/국가`], ['쿨타임', `${COOLDOWN_HOURS}시간`], ['엔진', 'Next.js + Vercel']].map(([k, v]) => (
-              <tr key={k}><td style={{ padding: '3px 0', fontWeight: 600 }}>{k}</td><td style={{ padding: '3px 0', textAlign: 'right' }}>{v}</td></tr>
+            {[['국가', `${COUNTRIES.length}개국`], ['슬롯', `${MAX_SLOTS}개/국가`], ['쿨타임', `${COOLDOWN_HOURS}시간`], ['엔진', 'Next.js']].map(([k, v]) => (
+              <tr key={k}><td style={{ padding: '5px 0', fontWeight: 500 }}>{k}</td><td style={{ padding: '5px 0', textAlign: 'right', color: '#999' }}>{v}</td></tr>
             ))}
           </tbody>
         </table>
-        <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '16px 0' }} />
-        <button onClick={handleLogout} style={{ width: '100%', padding: '6px', background: '#f0f0f0', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, color: '#999', cursor: 'pointer' }}>🚪 로그아웃</button>
+        <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '20px 0' }} />
+        <button onClick={handleLogout} style={{ width: '100%', padding: '8px', background: '#f8f9fa', border: '1px solid #e0e0e0', borderRadius: 8, fontSize: 13, color: '#888', cursor: 'pointer' }}>🚪 로그아웃</button>
       </aside>
 
       {/* ===== 메인 ===== */}
@@ -462,7 +462,7 @@ export default function Dashboard() {
               <button onClick={sync} disabled={syncing} style={{ padding: '8px 16px', background: '#fff', border: '1px solid #ddd', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: syncing ? 'not-allowed' : 'pointer', color: '#555' }}>
                 {syncing ? '⏳ 동기화 중...' : '🔄 상품 동기화'}
               </button>
-              <button onClick={() => { setPopupCountry(sel); setSelectedProduct(null); setBoostManageOpen(true); }} style={{ padding: '8px 16px', background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={() => { setPopupCountry(sel); setSelectedProduct(null); setBoostManageOpen(true); }} style={{ padding: '8px 16px', background: '#fff', color: '#2563EB', border: '1px solid #93c5fd', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
                 ⚡ 부스트 설정
               </button>
             </div>
@@ -532,7 +532,7 @@ export default function Dashboard() {
                         onMouseEnter={e => { if (!isBoosted) e.currentTarget.style.background = '#fafbfc'; }}
                         onMouseLeave={e => { e.currentTarget.style.background = isBoosted ? '#FFF8E1' : '#fff'; }}>
                         <div style={{ flex: 4, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14, color: '#333', lineHeight: 1.5 }}>{isBoosted && '🟢 '}{p.item_name}</div>
+                          <div style={{ fontWeight: 500, fontSize: 14, color: '#333', lineHeight: 1.6 }}>{p.item_name}</div>
                           <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
                             ID: {p.item_id}
                             <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 3, fontSize: 10, fontWeight: 600, marginLeft: 4, background: cc.bg, color: cc.tx }}>{sel}</span>
@@ -542,11 +542,11 @@ export default function Dashboard() {
                         {[{ l: '🏋️ 무게', v: w }, { l: '📦 재고', v: st }, { l: '💰 가격', v: pr }].map((col, ci) => (
                           <div key={ci} style={{ width: 70, textAlign: 'center' }}><div style={{ fontSize: 10, color: '#999' }}>{col.l}</div><div style={{ fontSize: 13, fontWeight: 500, color: '#555' }}>{col.v}</div></div>
                         ))}
-                        <div style={{ width: 90, marginLeft: 8 }}>
+                        <div style={{ width: 100, marginLeft: 12 }}>
                           {isBoosted ? (
-                            <button onClick={() => { setPopupCountry(sel); setSelectedProduct(null); setBoostManageOpen(true); }} style={{ width: '100%', padding: '6px', background: '#e8f5e9', border: '1px solid #c8e6c9', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#2e7d32', fontWeight: 600 }}>✅ 설정됨</button>
+                            <button onClick={() => { setPopupCountry(sel); setSelectedProduct(null); setBoostManageOpen(true); }} style={{ width: '100%', padding: '7px 0', background: '#16a34a', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>✅ 설정됨</button>
                           ) : (
-                            <button onClick={() => { setPopupCountry(sel); setSelectedProduct({ itemId: p.item_id, itemName: p.item_name }); setBoostManageOpen(true); }} style={{ width: '100%', padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>⚡ 부스트</button>
+                            <button onClick={() => { setPopupCountry(sel); setSelectedProduct({ itemId: p.item_id, itemName: p.item_name }); setBoostManageOpen(true); }} style={{ width: '100%', padding: '7px 0', background: '#fff', color: '#555', border: '1px solid #ddd', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>⚡ 부스트</button>
                           )}
                         </div>
                       </div>

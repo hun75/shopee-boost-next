@@ -433,8 +433,8 @@ export default function Dashboard() {
         <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
         <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>📊 전체 부스트 현황</h3>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 11, color: '#999' }}>🟢 부스트 중</div><div style={{ fontSize: 22, fontWeight: 800 }}>{totalActive}개</div></div>
-          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 11, color: '#999' }}>🟡 대기 중</div><div style={{ fontSize: 22, fontWeight: 800 }}>{totalWaiting}개</div></div>
+          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 11, color: '#999' }}>⚡ 설정됨</div><div style={{ fontSize: 22, fontWeight: 800 }}>{allItems.length}개</div></div>
+          <div style={{ flex: 1, textAlign: 'center', padding: 8, background: '#f8f9fa', borderRadius: 8 }}><div style={{ fontSize: 11, color: '#999' }}>🟢 활성 중</div><div style={{ fontSize: 22, fontWeight: 800 }}>{totalActive}개</div></div>
         </div>
         <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
         <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>⚙️ 시스템 정보</h3>
@@ -470,11 +470,9 @@ export default function Dashboard() {
             <>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 {[
-                  { val: synced, lbl: '📦 동기화 상품', border: '#607D8B' },
-                  { val: data?.counts?.Active || 0, lbl: '🟢 부스트 중', border: '#4CAF50' },
-                  { val: data?.counts?.Waiting || 0, lbl: '🟡 대기 중', border: '#FF9800' },
-                  { val: `${totalReg}/${MAX_SLOTS}`, lbl: '📋 등록 상품', border: '#2196F3' },
-                  { val: remaining, lbl: '🆓 남은 슬롯', border: '#9C27B0' },
+                  { val: synced, lbl: '📦 전체 상품', border: '#607D8B' },
+                  { val: `${totalReg}/${MAX_SLOTS}`, lbl: '⚡ 부스트 설정', border: '#2196F3' },
+                  { val: data?.counts?.Active || 0, lbl: '🟢 활성 중', border: '#4CAF50' },
                 ].map((c, i) => (
                   <div key={i} style={{ flex: 1, background: '#fff', border: '1px solid #eee', borderLeft: `3px solid ${c.border}`, borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
                     <div style={{ fontSize: 20, fontWeight: 700 }}>{c.val}</div><div style={{ fontSize: 10, color: '#999' }}>{c.lbl}</div>

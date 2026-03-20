@@ -148,6 +148,76 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   );
 }
 
+// ═══ 팝업 국가 상세 ═══
+function PopupCountryDetail({ country, selectedProduct, onAdd, onRemove, items }: {
+  country: string;
+  selectedProduct: { itemId: string; itemName: string } | null;
+  onAdd: (country: string, itemId: string, itemName: string) => void;
+  onRemove: (country: string, itemId: string, itemName: string) => void;
+  items: any[];
+}) {
+  const countryItems = items.filter((i: any) => i.country === country);
+  const cnt = countryItems.length;
+  const isFull = cnt >= MAX_SLOTS;
+  const alreadyAdded = selectedProduct ? countryItems.some(i => i.item_id === selectedProduct.itemId) : false;
+
+  return (
+    <div style={{ padding: '0 20px 12px' }}>
+      <div style={{ background: isFull ? '#FFF3E0' : '#f8f9fa', border: `1px solid ${isFull ? '#FFB74D' : '#eee'}`, borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{country} 지역 부스트 설정</div>
+            <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{cnt}/{MAX_SLOTS}개 설정됨{cnt < MAX_SLOTS ? ` (${MAX_SLOTS - cnt}개 추가 가능)` : ''}</div>
+          </div>
+          {isFull && <span style={{ background: '#EE4D2D', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>최대치 도달</span>}
+          {!isFull && cnt > 0 && <span style={{ color: '#4CAF50', fontSize: 12, fontWeight: 600 }}>여유 있음</span>}
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>⊕ 설정된 상품 ({cnt}개)</div>
+      {cnt === 0 ? (
+        <div style={{ textAlign: 'center', padding: 30, color: '#999', fontSize: 13 }}>
+          📦 이 지역에 설정된 부스트 상품이 없습니다.<br/>
+          <small>하단에서 상품을 추가해보세요.</small>
+        </div>
+      ) : (
+        <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
+          {countryItems.map((item: any) => (
+            <div key={item.item_id} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f5f5f5', gap: 8 }}>
+              <button onClick={() => onRemove(country, item.item_id, item.item_name || '')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#EE4D2D', flexShrink: 0 }}>🗑️</button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: '#999' }}>ID: {item.item_id}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.item_name || 'Unknown'}</div>
+              </div>
+              <span style={{ fontSize: 11, color: item.status === 'Active' ? '#4CAF50' : '#FF9800', fontWeight: 600, flexShrink: 0 }}>{item.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectedProduct && (
+        <div style={{ background: '#E3F2FD', border: '1px solid #BBDEFB', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>선택된 상품을 이 지역에 추가하시겠습니까?</div>
+            <div style={{ fontSize: 12, color: '#555', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selectedProduct.itemName} (ID: {selectedProduct.itemId})
+            </div>
+          </div>
+          {alreadyAdded ? (
+            <span style={{ padding: '6px 14px', background: '#e8e8e8', color: '#999', borderRadius: 6, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>이미 추가됨</span>
+          ) : isFull ? (
+            <span style={{ padding: '6px 14px', background: '#e8e8e8', color: '#999', borderRadius: 6, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>슬롯 없음</span>
+          ) : (
+            <button onClick={() => onAdd(country, selectedProduct.itemId, selectedProduct.itemName)}
+              style={{ padding: '6px 14px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>+ 추가</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══ 메인 대시보드 ═══
 export default function Dashboard() {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
@@ -161,8 +231,12 @@ export default function Dashboard() {
   const [auth, setAuth] = useState<any>({ authenticated: false, countries: {} });
   const [showLogs, setShowLogs] = useState(false);
   const [allItems, setAllItems] = useState<BoostedItem[]>([]);
-  const [replaceTarget, setReplaceTarget] = useState<{ itemId: string; itemName: string } | null>(null);
   const [authAlerts, setAuthAlerts] = useState<Record<string, { required: boolean; message: string | null }>>({});
+  // 부스트 설정 관리 팝업
+  const [boostManageOpen, setBoostManageOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<{ itemId: string; itemName: string } | null>(null);
+  const [popupCountry, setPopupCountry] = useState(sel);
+  const [toast, setToast] = useState<string | null>(null);
 
   // 세션 확인
   useEffect(() => {
@@ -207,9 +281,31 @@ export default function Dashboard() {
     catch (e: any) { alert(`❌ ${e.message}`); } finally { setSyncing(false); }
   };
 
-  const act = async (action: string, extra: any = {}) => {
-    const r = await fetch('/api/shopee/boost', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, country: sel, ...extra }) });
-    const j = await r.json(); if (j.error) { alert(`❌ ${j.error}`); return; }
+  const act = async (action: string, country: string, extra: any = {}) => {
+    const r = await fetch('/api/shopee/boost', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, country, ...extra }) });
+    const j = await r.json(); if (j.error) { setToast(`❌ ${j.error}`); return j; }
+    await load(sel); await loadAll();
+    return j;
+  };
+
+  // 팝업에서 추가/삭제 시 자동 부스트
+  const addToBoost = async (country: string, itemId: string, itemName: string) => {
+    await act('register', country, { itemId, itemName });
+    // 자동으로 부스트 활성화 (아이템 있으면 자동 시작)
+    const items = await fetch(`/api/shopee/items?country=${country}`).then(r => r.json());
+    const boosted = items?.boostedItems || [];
+    if (boosted.length > 0) {
+      await act('start', country, { itemIds: boosted.map((i: any) => i.item_id) });
+    }
+    setToast(`✅ ${itemName.slice(0, 25)}... → ${country} 부스트 추가`);
+    setTimeout(() => setToast(null), 3000);
+    await load(sel); await loadAll();
+  };
+
+  const removeFromBoost = async (country: string, itemId: string, itemName: string) => {
+    await act('unregister', country, { itemId, itemName });
+    setToast(`🗑️ ${itemName.slice(0, 25)}... → ${country} 부스트 해제`);
+    setTimeout(() => setToast(null), 3000);
     await load(sel); await loadAll();
   };
 
@@ -261,22 +357,59 @@ export default function Dashboard() {
         </div>
       )}
     <div style={{ display: 'flex', flex: 1 }}>
-      {/* 교체 모달 */}
-      {replaceTarget && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setReplaceTarget(null)}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 480, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>🔄 부스트 상품 교체</h3>
-            <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>새 상품: <b>{replaceTarget.itemName.slice(0, 40)}</b></p>
-            <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
-            <p style={{ fontSize: 13, color: '#999', marginBottom: 12 }}>교체할 기존 상품 선택:</p>
-            {(data?.boostedItems || []).map(it => (
-              <div key={it.item_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
-                <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{it.item_name.slice(0, 30)}</div><div style={{ fontSize: 11, color: '#999' }}>{it.status}</div></div>
-                <button onClick={async () => { await act('replace', { oldItemId: it.item_id, itemId: replaceTarget.itemId, itemName: replaceTarget.itemName }); setReplaceTarget(null); }}
-                  style={{ padding: '6px 14px', background: '#EE4D2D', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>이것과 교체</button>
+      {/* 토스트 알림 */}
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: '#333', color: '#fff', padding: '10px 24px', borderRadius: 8, fontSize: 14, fontWeight: 600, zIndex: 2000, boxShadow: '0 4px 16px rgba(0,0,0,0.3)', animation: 'fadeIn 0.3s' }}>
+          {toast}
+        </div>
+      )}
+
+      {/* ===== 부스트 설정 관리 팝업 ===== */}
+      {boostManageOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => { setBoostManageOpen(false); setSelectedProduct(null); }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 0, width: 600, maxHeight: '85vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>⚡ 부스트 설정 관리</h3>
+                {selectedProduct && <p style={{ fontSize: 12, color: '#666', margin: '4px 0 0' }}>선택: {selectedProduct.itemName.slice(0, 60)}</p>}
               </div>
-            ))}
-            <button onClick={() => setReplaceTarget(null)} style={{ marginTop: 16, width: '100%', padding: '8px', background: '#f0f0f0', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>취소</button>
+              <button onClick={() => { setBoostManageOpen(false); setSelectedProduct(null); }} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#999' }}>✕</button>
+            </div>
+
+            {/* 국가 탭 */}
+            <div style={{ padding: '12px 20px' }}>
+              <p style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>지역별 부스트 설정</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {COUNTRIES.map(c => {
+                  const cCount = allItems.filter((i: any) => i.country === c).length;
+                  return (
+                    <button key={c} onClick={() => setPopupCountry(c)} style={{
+                      padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      border: popupCountry === c ? `2px solid ${CC[c].tx}` : '1px solid #ddd',
+                      background: popupCountry === c ? CC[c].bg : '#f8f9fa',
+                      color: popupCountry === c ? CC[c].tx : '#999',
+                    }}>
+                      {c} {cCount}/{MAX_SLOTS}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 선택된 국가 상세 */}
+            <PopupCountryDetail
+              country={popupCountry}
+              selectedProduct={selectedProduct}
+              onAdd={addToBoost}
+              onRemove={removeFromBoost}
+              items={allItems}
+            />
+
+            {/* 닫기 */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #eee', textAlign: 'right' }}>
+              <button onClick={() => { setBoostManageOpen(false); setSelectedProduct(null); }} style={{ padding: '8px 20px', background: '#f0f0f0', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>✕ 닫기</button>
+            </div>
           </div>
         </div>
       )}
@@ -352,11 +485,7 @@ export default function Dashboard() {
                   <div style={{ fontSize: 13 }}>
                     {data?.isActive ? <span>🟢 <b>부스트 활성</b> · {totalReg}개 · 마지막: {toKST(data?.lastBoost)}</span> : <span>⏸️ <b>부스트 비활성</b>{totalReg > 0 ? ` · ${totalReg}개` : ''}</span>}
                   </div>
-                  {!data?.isActive ? (
-                    <button onClick={() => act('start', { itemIds: data?.boostedItems?.map(i => i.item_id) })} disabled={totalReg === 0} style={{ padding: '8px 20px', background: totalReg === 0 ? '#ccc' : '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: totalReg === 0 ? 'not-allowed' : 'pointer' }}>🚀 부스트 시작</button>
-                  ) : (
-                    <button onClick={() => act('stop')} style={{ padding: '8px 20px', background: '#666', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>⏹ 부스트 정지</button>
-                  )}
+                  <button onClick={() => { setPopupCountry(sel); setSelectedProduct(null); setBoostManageOpen(true); }} style={{ padding: '8px 20px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>⚡ 부스트 설정</button>
                 </div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <input type="text" placeholder="상품명, 상품ID 검색..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 3, padding: '8px 14px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, outline: 'none' }} />
@@ -394,11 +523,9 @@ export default function Dashboard() {
                         ))}
                         <div style={{ width: 90, marginLeft: 8 }}>
                           {isBoosted ? (
-                            <button onClick={() => act('unregister', { itemId: p.item_id, itemName: p.item_name })} style={{ width: '100%', padding: '6px', background: '#fff', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}>해제</button>
-                          ) : remaining > 0 ? (
-                            <button onClick={() => act('register', { itemId: p.item_id, itemName: p.item_name })} style={{ width: '100%', padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>⚡ 부스트</button>
+                            <button onClick={() => { setPopupCountry(sel); setSelectedProduct(null); setBoostManageOpen(true); }} style={{ width: '100%', padding: '6px', background: '#e8f5e9', border: '1px solid #c8e6c9', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#2e7d32', fontWeight: 600 }}>✅ 설정됨</button>
                           ) : (
-                            <button onClick={() => setReplaceTarget({ itemId: p.item_id, itemName: p.item_name })} style={{ width: '100%', padding: '6px', background: '#fff', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}>🔄 교체</button>
+                            <button onClick={() => { setPopupCountry(sel); setSelectedProduct({ itemId: p.item_id, itemName: p.item_name }); setBoostManageOpen(true); }} style={{ width: '100%', padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>⚡ 부스트</button>
                           )}
                         </div>
                       </div>

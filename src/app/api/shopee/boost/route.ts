@@ -135,14 +135,14 @@ export async function POST(req: NextRequest) {
       case 'register': {
         // 부스트 등록 (대기)
         await db.addItem(country, itemId, itemName, 'Waiting');
-        await db.addLog(country, itemId, '📥 상품 등록', 'success', `${itemName?.slice(0, 30)}`);
+        await db.addLog(country, itemId, '📥 상품 등록', 'success', `${itemName?.slice(0, 40)}`);
         return NextResponse.json({ success: true });
       }
 
       case 'unregister': {
         // 부스트 해제
         await db.removeItem(country, itemId);
-        await db.addLog(country, itemId, '📤 상품 해제', 'success', `${itemName?.slice(0, 30)}`);
+        await db.addLog(country, itemId, '📤 상품 해제', 'success', `${itemName?.slice(0, 40)}`);
         // 등록 상품이 0개면 부스트 사이클 자동 중지
         const remainingItems = await db.getItemsByCountry(country);
         if (remainingItems.length === 0) {
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
         // 교체
         const { oldItemId } = body;
         await db.replaceBoostItem(country, oldItemId, itemId, itemName);
-        await db.addLog(country, itemId, '🔄 상품 교체', 'success', `${itemName?.slice(0, 30)}`);
+        await db.addLog(country, itemId, '🔄 상품 교체', 'success', `${itemName?.slice(0, 40)}`);
         return NextResponse.json({ success: true });
       }
 

@@ -668,7 +668,7 @@ export default function Dashboard() {
                         <span style={{ fontSize: 12 }}>{log.result === 'success' ? '✅' : log.result === 'info' ? 'ℹ️' : '❌'}</span>
                         <span style={{ fontSize: 12, fontWeight: 600, color: '#333', flexShrink: 0 }}>{log.action}</span>
                         <span style={{ fontSize: 12, color: '#666', flex: 1 }}>{log.message}</span>
-                        <span style={{ fontSize: 11, color: '#888', flexShrink: 0, background: '#f5f5f5', padding: '1px 6px', borderRadius: 3 }}>{toKST(log.created_at)}</span>
+                        <span style={{ fontSize: 11, color: '#888', flexShrink: 0, background: '#f5f5f5', padding: '1px 6px', borderRadius: 3, marginLeft: 20 }}>{toKST(log.created_at)}</span>
                       </div>
                     ))}
                   </div>

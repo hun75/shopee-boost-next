@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
         const result = await shopee.boostItems(country, accessToken, ids);
         const now = new Date().toISOString();
         const boostedCount = result.boosted?.length || 0;
+        const failedCount = result.failed?.length || 0;
         const alreadyBoosted = result.raw_error === 'product.error_busi';
 
         await db.setBoostActive(country, true);
@@ -72,13 +73,47 @@ export async function POST(req: NextRequest) {
           for (const iid of result.boosted) {
             await db.updateItemStatus(country, iid, 'Active', now);
           }
-          await db.addLog(country, '', '⚡ 부스트 시작', 'success', `${boostedCount}개 상품 부스트 시작됨`);
-        } else if (alreadyBoosted) {
+        }
+
+        // failures 중 '이미 부스트 활성' 항목과 '진짜 실패' 항목 분류
+        const alreadyActiveIds: string[] = [];
+        const realFailedIds: string[] = [];
+        if (result.failures_detail?.length > 0) {
+          for (const f of result.failures_detail) {
+            // Shopee API: 이미 부스트 중인 상품은 failed_reason에 'boost' 포함
+            const reason = (f.failed_reason || '').toLowerCase();
+            if (reason.includes('boost') || reason.includes('cooldown')) {
+              alreadyActiveIds.push(String(f.item_id));
+            } else {
+              realFailedIds.push(String(f.item_id));
+            }
+          }
+        }
+        // 이미 활성 상품은 Active 유지
+        for (const iid of alreadyActiveIds) {
+          await db.updateItemStatus(country, iid, 'Active', now);
+        }
+
+        // 로그 기록 — 정확한 내역
+        if (alreadyBoosted) {
+          // 전체 배치가 '이미 부스트 중' 에러
           for (const iid of ids) {
             await db.updateItemStatus(country, iid, 'Active', now);
           }
           await db.addLog(country, '', '⚡ 부스트 유지', 'success', `${ids.length}개 상품 이미 부스트 활성 중`);
+        } else if (boostedCount > 0 && failedCount === 0) {
+          // 전부 성공
+          await db.addLog(country, '', '⚡ 부스트 시작', 'success', `${boostedCount}개 상품 부스트 시작됨`);
+        } else if (boostedCount > 0 && alreadyActiveIds.length > 0 && realFailedIds.length === 0) {
+          // 일부 새로 시작 + 나머지는 이미 활성
+          await db.addLog(country, '', '⚡ 부스트 시작', 'success',
+            `${boostedCount}개 새로 시작 + ${alreadyActiveIds.length}개 이미 활성 중`);
+        } else if (boostedCount > 0 && realFailedIds.length > 0) {
+          // 일부 성공 + 진짜 실패 있음
+          await db.addLog(country, '', '⚠️ 부스트 부분 성공', 'success',
+            `${boostedCount}개 성공, ${realFailedIds.length}개 실패 (이미 활성: ${alreadyActiveIds.length}개)`);
         } else {
+          // 전부 실패
           await db.addLog(country, '', '❌ 부스트 실패', 'fail',
             `${ids.length}개 상품 부스트 실패 — ${result.raw_error || result.message || '원인 불명'}`);
         }

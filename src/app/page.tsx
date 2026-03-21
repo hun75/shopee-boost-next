@@ -26,7 +26,7 @@ function toKST(s: string | null) {
 }
 
 interface Product { item_id: string; item_name: string; weight: number; price: number; stock: number; has_model: boolean; }
-interface BoostedItem { item_id: string; item_name: string; status: string; }
+interface BoostedItem { item_id: string; item_name: string; status: string; country?: string; }
 interface CountryData { products: Product[]; boostedItems: BoostedItem[]; counts: { Active: number; Waiting: number }; isActive: boolean; lastBoost: string | null; }
 interface LogEntry { action: string; item_id: string; result: string; message: string; created_at: string; }
 
@@ -155,7 +155,7 @@ function PopupCountryDetail({ country, selectedProduct, onAdd, onRemove, items, 
   onAdd: (country: string, itemId: string, itemName: string) => void;
   onRemove: (country: string, itemId: string, itemName: string) => void;
   items: any[];
-  pendingBoosts: Record<string, { country: string; itemId: string; itemName: string; fireAt: number }>;
+  pendingBoosts: Record<string, { country: string; fireAt: number; itemCount: number }>;
   onCancelPending: (key: string) => void;
 }) {
   const countryItems = items.filter((i: any) => i.country === country);
@@ -185,8 +185,7 @@ function PopupCountryDetail({ country, selectedProduct, onAdd, onRemove, items, 
       ) : (
         <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
           {countryItems.map((item: any) => {
-            const key = `${country}_${item.item_id}`;
-            const pending = pendingBoosts[key];
+            const pending = pendingBoosts[country];
             const remainSec = pending ? Math.max(0, Math.ceil((pending.fireAt - Date.now()) / 1000)) : 0;
             const remainMin = Math.floor(remainSec / 60);
             const remainSecMod = remainSec % 60;
@@ -203,7 +202,7 @@ function PopupCountryDetail({ country, selectedProduct, onAdd, onRemove, items, 
                   <span style={{ fontSize: 11, color: '#E65100', fontWeight: 700, background: '#FFF3E0', padding: '2px 8px', borderRadius: 4 }}>
                     ⏳ {remainMin}:{String(remainSecMod).padStart(2, '0')}
                   </span>
-                  <button onClick={() => onCancelPending(key)}
+                  <button onClick={() => onCancelPending(country)}
                     style={{ fontSize: 10, padding: '3px 8px', background: '#ffebee', color: '#c62828', border: '1px solid #ef9a9a', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>취소</button>
                 </div>
               ) : (
@@ -256,8 +255,8 @@ export default function Dashboard() {
   const [selectedProduct, setSelectedProduct] = useState<{ itemId: string; itemName: string } | null>(null);
   const [popupCountry, setPopupCountry] = useState(sel);
   const [toast, setToast] = useState<string | null>(null);
-  // 5분 대기 부스트 타이머
-  const [pendingBoosts, setPendingBoosts] = useState<Record<string, { country: string; itemId: string; itemName: string; fireAt: number }>>({});
+  // 5분 대기 부스트 타이머 (국가별 1개 — 같은 국가에 추가하면 타이머 리셋)
+  const [pendingBoosts, setPendingBoosts] = useState<Record<string, { country: string; fireAt: number; itemCount: number }>>({});
   const pendingTimersRef = useRef<Record<string, NodeJS.Timeout>>({});
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -345,14 +344,18 @@ export default function Dashboard() {
     };
   }, []);
 
-  // 팝업에서 추가 시 → 등록만 하고 5분 대기 후 자동 부스트
+  // 팝업에서 추가 시 → 등록만 하고, 국가별 5분 타이머 1개만 유지 (추가할 때마다 리셋)
   const addToBoost = async (country: string, itemId: string, itemName: string) => {
     await act('register', country, { itemId, itemName });
-    const key = `${country}_${itemId}`;
     const DELAY_MS = 5 * 60 * 1000; // 5분
     const fireAt = Date.now() + DELAY_MS;
 
-    // 5분 후 자동 부스트 실행 타이머 (현재 화면을 건드리지 않음!)
+    // 같은 국가에 이미 타이머가 있으면 취소하고 리셋
+    if (pendingTimersRef.current[country]) {
+      clearTimeout(pendingTimersRef.current[country]);
+    }
+
+    // 국가별 5분 타이머 — 1회만 실행
     const timer = setTimeout(async () => {
       try {
         const itemsResp = await fetch(`/api/shopee/items?country=${country}`).then(r => r.json());
@@ -369,20 +372,20 @@ export default function Dashboard() {
         }
       } catch { setToast(`❌ ${country} 자동 부스트 실패`); }
       setTimeout(() => setToast(null), 4000);
-      // 완료 후 pending에서 제거 + 사이드바 데이터만 갱신 (현재 화면 안 건드림)
-      setPendingBoosts(prev => { const next = { ...prev }; delete next[key]; return next; });
-      delete pendingTimersRef.current[key];
+      setPendingBoosts(prev => { const next = { ...prev }; delete next[country]; return next; });
+      delete pendingTimersRef.current[country];
       await loadAll();
     }, DELAY_MS);
 
-    pendingTimersRef.current[key] = timer;
-    setPendingBoosts(prev => ({ ...prev, [key]: { country, itemId, itemName, fireAt } }));
-    setToast(`⏳ ${itemName.slice(0, 25)}... → ${country} 등록 완료! 5분 후 자동 부스트`);
+    pendingTimersRef.current[country] = timer;
+    const currentCount = allItems.filter(i => i.country === country).length + 1;
+    setPendingBoosts(prev => ({ ...prev, [country]: { country, fireAt, itemCount: currentCount } }));
+    setToast(`⏳ ${itemName.slice(0, 25)}... → ${country} 등록! 5분 후 자동 부스트`);
     setTimeout(() => setToast(null), 4000);
     await load(sel); await loadAll();
   };
 
-  // 대기 중인 부스트 즉시 취소
+  // 국가 대기 타이머 취소
   const cancelPendingBoost = (key: string) => {
     if (pendingTimersRef.current[key]) {
       clearTimeout(pendingTimersRef.current[key]);
@@ -394,14 +397,14 @@ export default function Dashboard() {
   };
 
   const removeFromBoost = async (country: string, itemId: string, itemName: string) => {
-    // 대기 중인 타이머가 있으면 함께 취소
-    const key = `${country}_${itemId}`;
-    if (pendingTimersRef.current[key]) {
-      clearTimeout(pendingTimersRef.current[key]);
-      delete pendingTimersRef.current[key];
-      setPendingBoosts(prev => { const next = { ...prev }; delete next[key]; return next; });
-    }
     await act('unregister', country, { itemId, itemName });
+    // 삭제 후 해당 국가에 남는 아이템이 없으면 타이머도 취소
+    const remaining = allItems.filter(i => i.country === country && i.item_id !== itemId);
+    if (remaining.length === 0 && pendingTimersRef.current[country]) {
+      clearTimeout(pendingTimersRef.current[country]);
+      delete pendingTimersRef.current[country];
+      setPendingBoosts(prev => { const next = { ...prev }; delete next[country]; return next; });
+    }
     setToast(`🗑️ ${itemName.slice(0, 25)}... → ${country} 부스트 해제`);
     setTimeout(() => setToast(null), 3000);
     await load(sel); await loadAll();

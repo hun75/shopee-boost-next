@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
         const shopId = tokens[country]?.shop_id || shopee.SHOPS[country];
         if (!shopId) {
           results[country] = 'ERROR: DB에 해당 국가의 shop_id가 없습니다';
-          await db.addLog(country, '', 'auto_boost', 'fail', 'shop_id 없음');
+          await db.addLog(country, '', '❌ 인증 오류', 'fail', 'shop_id가 없습니다. 재인증 필요');
           continue;
         }
 
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
         const refreshToken = tokens[country]?.refresh_token || tokens._main_account?.refresh_token;
         if (!refreshToken) {
           results[country] = 'ERROR: refresh_token 없음. 재인증 필요';
-          await db.addLog(country, '', 'auto_boost', 'fail', 'refresh_token 없음');
+          await db.addLog(country, '', '❌ 인증 오류', 'fail', '인증 토큰이 없습니다. 재인증 필요');
           continue;
         }
 
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
           await db.setAuthRequired(country, false);
         } catch (refreshErr: any) {
           results[country] = `REFRESH_FAIL: ${refreshErr.message?.slice(0, 80)}`;
-          await db.addLog(country, '', 'token_refresh', 'fail', `리프레시 실패: ${refreshErr.message?.slice(0, 50)}`);
+          await db.addLog(country, '', '🔑 토큰 만료', 'fail', `토큰 리프레시 실패 — ${refreshErr.message?.slice(0, 50)}`);
           // 리프레시 실패 → 해당 국가 재인증 필요 표시
           const countryName = shopee.COUNTRY_NAMES[country] || country;
           await db.setAuthRequired(country, true, `${countryName} 토큰이 만료되었습니다. 다시 샵 연동을 진행해 주세요.`);
@@ -137,13 +137,16 @@ export async function GET(req: NextRequest) {
         }
 
         if (alreadyBoosted) {
-          await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost', 'info',
-            `쿨타임 중 — 부스트 슬롯 사용 중 (${itemIds.length}건, 4시간 후 자동 재시도)`);
+          await db.addLog(country, '', '⏳ 쓸타임 대기', 'info',
+            `${itemIds.length}개 상품 부스트 활성 중 (4시간 후 자동 갱신)`);
           results[country] = `already boosted (${itemIds.length} items active)`;
         } else {
-          await db.addLog(country, itemIds.slice(0, 3).join(','), 'auto_boost',
+          await db.addLog(country, '',
+            boostedCount > 0 ? '🚀 자동 부스트' : '❌ 자동 부스트 실패',
             boostedCount > 0 ? 'success' : 'fail',
-            `자동 부스트: ${boostedCount}/${itemIds.length}건 | ${result.message || ''}`
+            boostedCount > 0
+              ? `${boostedCount}개 상품 자동 부스트 성공`
+              : `${itemIds.length}개 상품 자동 부스트 실패 — ${result.raw_error || result.message || '원인 불명'}`
           );
           results[country] = boostedCount > 0
             ? `boosted ${boostedCount}/${itemIds.length}`
@@ -151,7 +154,7 @@ export async function GET(req: NextRequest) {
         }
       } catch (e: any) {
         results[country] = `error: ${e.message?.slice(0, 60)}`;
-        await db.addLog(country, '', 'auto_boost', 'fail', `실패: ${e.message?.slice(0, 50)}`);
+        await db.addLog(country, '', '❌ 자동 부스트 오류', 'fail', `시스템 오류: ${e.message?.slice(0, 50)}`);
       }
     }
 

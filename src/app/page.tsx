@@ -664,7 +664,12 @@ export default function Dashboard() {
                 {showLogs && (
                   <div style={{ marginTop: 8, background: '#fff', border: '1px solid #eee', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
                     {logs.length === 0 ? <span>로그 없음</span> : logs.map((log, i) => (
-                      <div key={i} style={{ padding: '2px 0' }}>{log.result === 'success' ? '✅' : '❌'} [{log.action}] {log.item_id?.slice(0, 20)} — {log.message} <span style={{ opacity: 0.4 }}>({toKST(log.created_at)})</span></div>
+                      <div key={i} style={{ padding: '4px 0', borderBottom: '1px solid #f5f5f5', display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={{ fontSize: 12 }}>{log.result === 'success' ? '✅' : log.result === 'info' ? 'ℹ️' : '❌'}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{log.action}</span>
+                        <span style={{ fontSize: 12, color: '#666', flex: 1 }}>{log.message}</span>
+                        <span style={{ fontSize: 11, color: '#bbb', flexShrink: 0 }}>{toKST(log.created_at)}</span>
+                      </div>
                     ))}
                   </div>
                 )}

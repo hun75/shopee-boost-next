@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-const ADMIN_EMAIL = 'hun7575@naver.com';
+const ADMIN_EMAIL = 'use0509@gmail.com'; // Resend 가입 이메일로 변경 (무료 요금제 제한)
 
 // 인증 코드 저장용 (Supabase auth_tokens 테이블 key='password_reset')
 async function saveResetCode(code: string) {

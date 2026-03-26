@@ -54,6 +54,9 @@ export async function POST(req: NextRequest) {
 
         // Resend로 이메일 발송
         try {
+          if (!process.env.RESEND_API_KEY) {
+            return NextResponse.json({ error: '서버 에러: RESEND_API_KEY 환경 변수가 설정되지 않았습니다. 관리자에게 문의하세요.' }, { status: 500 });
+          }
           const { Resend } = await import('resend');
           const resend = new Resend(process.env.RESEND_API_KEY);
           await resend.emails.send({

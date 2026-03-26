@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
           }
           const { Resend } = await import('resend');
           const resend = new Resend(process.env.RESEND_API_KEY);
-          await resend.emails.send({
+          const { data, error } = await resend.emails.send({
             from: 'Shopee Agent <onboarding@resend.dev>',
             to: [ADMIN_EMAIL],
             subject: '🔐 Shopee Agent 비밀번호 변경 인증 코드',
@@ -74,6 +74,10 @@ export async function POST(req: NextRequest) {
               </div>
             `,
           });
+          
+          if (error) {
+            return NextResponse.json({ error: `Resend 발송 에러: ${error.message}` }, { status: 500 });
+          }
         } catch (emailErr: any) {
           return NextResponse.json({ error: `이메일 발송 실패: ${emailErr.message}` }, { status: 500 });
         }

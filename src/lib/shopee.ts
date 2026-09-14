@@ -156,44 +156,72 @@ export async function boostItems(country: string, accessToken: string, itemIds: 
     };
   }
 
-  // ── 배치 실패 → 상품별 개별 부스트로 폴백 (에러 격리) ──
+  // ── 배치 실패 시 처리 ──
+  // 상점 단위 에러(인증 오류, 파라미터 오류, 쿨타임 오류)는 개별 상품 호출을 해도 100% 동일하게 실패하므로 즉시 반환 (타임아웃 방지)
+  const isShopLevelError =
+    data.error === 'product.error_busi' || // 이미 부스트 활성 중 (쿨타임)
+    data.error === 'error_param' ||        // 파라미터 또는 토큰/shop_id 오류
+    data.error === 'error_auth' ||         // 인증 만료 오류
+    data.error === 'error_permission' ||
+    data.error === 'error_server';
+
+  if (isShopLevelError) {
+    return {
+      success: false,
+      boosted: [],
+      failed: itemIds,
+      message: `상점 레벨 오류: ${data.error} - ${data.message || ''}`,
+      raw_error: data.error,
+      fail_details: itemIds.map(id => `${id}: ${data.error}`),
+    };
+  }
+
+  // ── 상품별 개별 부스트 병렬 폴백 (에러 격리 - Promise.all로 초고속 처리) ──
+  const results = await Promise.all(
+    itemIds.map(async (itemId) => {
+      try {
+        const singleParams = buildParams(apiPath, accessToken, shopId);
+        const singleUrl = `${API_HOST}${apiPath}?${new URLSearchParams(Object.entries(singleParams).map(([k, v]) => [k, String(v)])).toString()}`;
+
+        const singleResp = await fetch(singleUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_id_list: [Number(itemId)] }),
+          cache: 'no-store',
+        });
+        const singleData = await singleResp.json();
+
+        if (singleData.error) {
+          return { id: itemId, success: false, error: `${itemId}: ${singleData.error}` };
+        }
+        const singleFailures = singleData.response?.failures || [];
+        if (singleFailures.length > 0) {
+          return { id: itemId, success: false, error: `${itemId}: ${singleFailures[0]?.failed_reason || 'unknown'}` };
+        }
+        return { id: itemId, success: true };
+      } catch (e: any) {
+        return { id: itemId, success: false, error: `${itemId}: ${e.message?.slice(0, 30) || 'error'}` };
+      }
+    })
+  );
+
   const boosted: string[] = [];
   const failed: string[] = [];
   const failErrors: string[] = [];
 
-  for (const itemId of itemIds) {
-    try {
-      const singleParams = buildParams(apiPath, accessToken, shopId);
-      const singleUrl = `${API_HOST}${apiPath}?${new URLSearchParams(Object.entries(singleParams).map(([k, v]) => [k, String(v)])).toString()}`;
-
-      const singleResp = await fetch(singleUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id_list: [Number(itemId)] }),
-        cache: 'no-store',
-      });
-      const singleData = await singleResp.json();
-
-      if (singleData.error) {
-        failed.push(itemId);
-        failErrors.push(`${itemId}: ${singleData.error}`);
-      } else {
-        const singleFailures = singleData.response?.failures || [];
-        if (singleFailures.length > 0) {
-          failed.push(itemId);
-          failErrors.push(`${itemId}: ${singleFailures[0]?.failed_reason || 'unknown'}`);
-        } else {
-          boosted.push(itemId);
-        }
-      }
-    } catch (e: any) {
-      failed.push(itemId);
-      failErrors.push(`${itemId}: ${e.message?.slice(0, 30) || 'error'}`);
+  for (const r of results) {
+    if (r.success) {
+      boosted.push(r.id);
+    } else {
+      failed.push(r.id);
+      if (r.error) failErrors.push(r.error);
     }
   }
 
   return {
-    success: failed.length === 0, boosted, failed,
+    success: failed.length === 0,
+    boosted,
+    failed,
     message: `개별 부스트: ${boosted.length}건 성공, ${failed.length}건 실패`,
     raw_error: data.error,
     fail_details: failErrors,

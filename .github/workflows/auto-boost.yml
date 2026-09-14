@@ -1,9 +1,10 @@
-name: Auto Boost (매시간 체크)
+name: Auto Boost (10분 폴링)
 
 on:
   schedule:
-    # 매시간 실행 — 각 국가별 마지막 부스트 기준 4시간 경과 시 자동 리부스트
-    - cron: '0 * * * *'
+    # 10분마다 실행 — 각 국가별 last_boost_at 기준 4시간(14,400초) 경과 시 즉시 리부스트
+    # 예: 13:05 부스트 → 17:05 이후 최초 폴링(17:10경)에서 감지 → 즉시 실행
+    - cron: '*/10 * * * *'
   workflow_dispatch: # 수동 실행도 가능
 
 jobs:
@@ -12,8 +13,8 @@ jobs:
     steps:
       - name: Trigger auto boost check
         run: |
-          echo "🔍 부스트 체크: $(date)"
-          RESPONSE=$(curl -s -w "\n%{http_code}" "https://shopee.koreain.com/api/cron/reboost")
+          echo "🔍 부스트 폴링 체크: $(date)"
+          RESPONSE=$(curl -s --max-time 30 -w "\n%{http_code}" "https://shopee.koreain.com/api/cron/reboost")
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -n -1)
           echo "HTTP Status: $HTTP_CODE"
@@ -21,6 +22,6 @@ jobs:
           if [ "$HTTP_CODE" -ne 200 ]; then
             echo "⚠️ 1차 실패, 2분 후 재시도..."
             sleep 120
-            curl -s "https://shopee.koreain.com/api/cron/reboost"
+            curl -s --max-time 30 "https://shopee.koreain.com/api/cron/reboost"
           fi
           echo "✅ 완료"

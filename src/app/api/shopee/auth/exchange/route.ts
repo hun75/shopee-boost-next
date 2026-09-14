@@ -42,6 +42,31 @@ export async function GET(req: NextRequest) {
           shop_id: countryShopId,
         };
       }
+
+      // 8개국 전체의 재인증 필요 경고(auth_required) 플래그 초기화
+      await Promise.all(
+        shopee.COUNTRIES.map(c => db.setAuthRequired(c, false))
+      );
+
+      // 각 상점별 토큰 개별 발급 시도 (실패해도 기본 토큰 유지)
+      for (const country of shopee.COUNTRIES) {
+        const countryShopId = shopee.SHOPS[country];
+        if (countryShopId && tokenData.refresh_token) {
+          try {
+            const refreshed = await shopee.refreshAccessToken(tokenData.refresh_token, countryShopId);
+            if (refreshed?.access_token) {
+              existingTokens[country] = {
+                access_token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+                shop_id: countryShopId,
+                updated_at: new Date().toISOString(),
+              };
+            }
+          } catch {
+            // 개별 리프레시 실패 시 메인 토큰 복사본 유지
+          }
+        }
+      }
     }
     // 개별 shop 인증 시: 해당 국가만 저장
     else if (shopId) {
@@ -52,6 +77,7 @@ export async function GET(req: NextRequest) {
           refresh_token: tokenData.refresh_token,
           shop_id: shopId,
         };
+        await db.setAuthRequired(country, false);
       }
       existingTokens._main_account = {
         access_token: tokenData.access_token,

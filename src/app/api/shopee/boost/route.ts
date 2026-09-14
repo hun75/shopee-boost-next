@@ -67,11 +67,16 @@ export async function POST(req: NextRequest) {
         const alreadyBoosted = result.raw_error === 'product.error_busi';
 
         await db.setBoostActive(country, true);
-        await db.updateLastBoostTime(country, now);
 
         if (boostedCount > 0) {
+          await db.updateLastBoostTime(country, now);
           for (const iid of result.boosted) {
             await db.updateItemStatus(country, iid, 'Active', now);
+          }
+        } else if (alreadyBoosted) {
+          const existingLast = await db.getLastBoostTime(country);
+          if (!existingLast) {
+            await db.updateLastBoostTime(country, now);
           }
         }
 
@@ -136,6 +141,12 @@ export async function POST(req: NextRequest) {
         // 부스트 등록 (대기)
         await db.addItem(country, itemId, itemName, 'Waiting');
         await db.addLog(country, itemId, '📥 상품 등록', 'success', `${itemName?.slice(0, 40)}`);
+        // 상품이 등록되면 부스트 사이클 자동 활성화
+        const isCurrentlyActive = await db.getBoostActive(country);
+        if (!isCurrentlyActive) {
+          await db.setBoostActive(country, true);
+          await db.addLog(country, '', '🔄 자동 활성화', 'success', '상품 등록으로 부스트 사이클 자동 시작');
+        }
         return NextResponse.json({ success: true });
       }
 

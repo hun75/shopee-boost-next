@@ -7,7 +7,12 @@ import crypto from 'crypto';
 
 // ─── 설정 ───
 const PARTNER_ID = Number(process.env.SHOPEE_PARTNER_ID) || 2031482;
-const PARTNER_KEY = process.env.SHOPEE_PARTNER_KEY || 'shpk7a4441676b514469735764734f64526a6a4265614176794b61484f796841';
+// 만료된 구 키(shpk554a...)가 환경변수에 남아있을 경우 신규 키 우선 적용
+const OLD_KEY = 'shpk554a515675436c534d4e6572646744754c55595745785a4559574e736976';
+const NEW_KEY = 'shpk7a4441676b514469735764734f64526a6a4265614176794b61484f796841';
+const PARTNER_KEY = (process.env.SHOPEE_PARTNER_KEY && process.env.SHOPEE_PARTNER_KEY !== OLD_KEY)
+  ? process.env.SHOPEE_PARTNER_KEY
+  : NEW_KEY;
 const API_HOST = 'https://partner.shopeemobile.com';
 
 // 국가별 shop_id

@@ -213,7 +213,7 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    return NextResponse.json({ success: true, results, timestamp: new Date().toISOString() });
+    return NextResponse.json({ success: true, version: '2026-09-15-v2', results, timestamp: new Date().toISOString() });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

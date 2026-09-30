@@ -1,3 +1,4 @@
+export const maxDuration = 60;
 import { NextRequest, NextResponse } from 'next/server';
 import * as shopee from '@/lib/shopee';
 import * as db from '@/lib/db';

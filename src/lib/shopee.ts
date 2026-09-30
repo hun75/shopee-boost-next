@@ -69,62 +69,121 @@ export async function getShopItems(country: string, accessToken: string): Promis
   const shopId = SHOPS[country];
   if (!shopId) throw new Error(`Unknown country: ${country}`);
 
-  // 1단계: item_id 목록 조회
+  // 1단계: item_id 목록 전체 페이징 순회 조회 (Shopee API v2 최대 100개 단위)
   const listPath = '/api/v2/product/get_item_list';
-  const listParams = { ...buildParams(listPath, accessToken, shopId), offset: 0, page_size: 50, item_status: 'NORMAL' };
-  const listUrl = `${API_HOST}${listPath}?${new URLSearchParams(Object.entries(listParams).map(([k, v]) => [k, String(v)])).toString()}`;
+  const itemIds: number[] = [];
+  let offset = 0;
+  const pageSize = 100;
+  let hasNext = true;
 
-  const listResp = await fetch(listUrl, { cache: 'no-store' });
-  const listData = await listResp.json();
+  while (hasNext) {
+    const listParams = {
+      ...buildParams(listPath, accessToken, shopId),
+      offset,
+      page_size: pageSize,
+      item_status: 'NORMAL',
+    };
+    const listUrl = `${API_HOST}${listPath}?${new URLSearchParams(Object.entries(listParams).map(([k, v]) => [k, String(v)])).toString()}`;
 
-  if (listData.error) throw new Error(`API 오류: ${listData.error} - ${listData.message || ''}`);
+    const listResp = await fetch(listUrl, { cache: 'no-store' });
+    const listData = await listResp.json();
 
-  const itemIds: number[] = (listData.response?.item || []).map((i: any) => i.item_id);
-  if (itemIds.length === 0) return [];
+    if (listData.error) throw new Error(`API 오류: ${listData.error} - ${listData.message || ''}`);
 
-  // 2단계: 상세 정보 조회 (50개씩)
-  const allItems: any[] = [];
-  for (let i = 0; i < itemIds.length; i += 50) {
-    const batch = itemIds.slice(i, i + 50);
-    const infoPath = '/api/v2/product/get_item_base_info';
-    const infoParams = { ...buildParams(infoPath, accessToken, shopId), item_id_list: batch.join(',') };
-    const infoUrl = `${API_HOST}${infoPath}?${new URLSearchParams(Object.entries(infoParams).map(([k, v]) => [k, String(v)])).toString()}`;
-
-    const infoResp = await fetch(infoUrl, { cache: 'no-store' });
-    const infoData = await infoResp.json();
-
-    if (infoData.error) {
-      batch.forEach(id => allItems.push({ item_id: String(id), item_name: `Item ${id}`, weight: 0, price: 0, stock: 0, has_model: false }));
-      continue;
+    const items = listData.response?.item || [];
+    for (const item of items) {
+      if (item.item_id) itemIds.push(item.item_id);
     }
 
-    for (const item of infoData.response?.item_list || []) {
-      let price = 0;
-      const priceInfo = item.price_info;
-      if (Array.isArray(priceInfo) && priceInfo.length > 0) price = priceInfo[0]?.current_price || 0;
-      else if (priceInfo && typeof priceInfo === 'object') price = priceInfo.current_price || 0;
-
-      let stock = 0;
-      const stockInfo = item.stock_info_v2?.summary_info;
-      if (stockInfo) stock = stockInfo.total_available_stock || 0;
-
-      let imageUrl = '';
-      if (item.image?.image_url_list?.length) imageUrl = item.image.image_url_list[0];
-
-      allItems.push({
-        item_id: String(item.item_id),
-        item_name: item.item_name || `Item ${item.item_id}`,
-        weight: item.weight || 0,
-        price,
-        stock,
-        image_url: imageUrl,
-        item_status: item.item_status || 'NORMAL',
-        has_model: item.has_model || false,
-      });
+    hasNext = Boolean(listData.response?.has_next_page);
+    if (hasNext && listData.response?.next_offset !== undefined) {
+      const nextOffset = Number(listData.response.next_offset);
+      if (isNaN(nextOffset) || nextOffset <= offset) {
+        offset += items.length;
+        if (items.length === 0) break;
+      } else {
+        offset = nextOffset;
+      }
+    } else {
+      break;
     }
+
+    if (itemIds.length >= 10000) break; // 무한 루프 방지 안전가드
   }
 
-  return allItems;
+  if (itemIds.length === 0) return [];
+
+  // 2단계: 상세 정보 조회 (50개씩 청크 분할 및 병렬 배치 조회)
+  const batchChunks: number[][] = [];
+  for (let i = 0; i < itemIds.length; i += 50) {
+    batchChunks.push(itemIds.slice(i, i + 50));
+  }
+
+  const batchResults = await Promise.all(
+    batchChunks.map(async (batch) => {
+      const infoPath = '/api/v2/product/get_item_base_info';
+      const infoParams = { ...buildParams(infoPath, accessToken, shopId), item_id_list: batch.join(',') };
+      const infoUrl = `${API_HOST}${infoPath}?${new URLSearchParams(Object.entries(infoParams).map(([k, v]) => [k, String(v)])).toString()}`;
+
+      try {
+        const infoResp = await fetch(infoUrl, { cache: 'no-store' });
+        const infoData = await infoResp.json();
+
+        if (infoData.error) {
+          return batch.map(id => ({
+            item_id: String(id),
+            item_name: `Item ${id}`,
+            weight: 0,
+            price: 0,
+            stock: 0,
+            image_url: '',
+            item_status: 'NORMAL',
+            has_model: false,
+          }));
+        }
+
+        const items: any[] = [];
+        for (const item of infoData.response?.item_list || []) {
+          let price = 0;
+          const priceInfo = item.price_info;
+          if (Array.isArray(priceInfo) && priceInfo.length > 0) price = priceInfo[0]?.current_price || 0;
+          else if (priceInfo && typeof priceInfo === 'object') price = priceInfo.current_price || 0;
+
+          let stock = 0;
+          const stockInfo = item.stock_info_v2?.summary_info;
+          if (stockInfo) stock = stockInfo.total_available_stock || 0;
+
+          let imageUrl = '';
+          if (item.image?.image_url_list?.length) imageUrl = item.image.image_url_list[0];
+
+          items.push({
+            item_id: String(item.item_id),
+            item_name: item.item_name || `Item ${item.item_id}`,
+            weight: item.weight || 0,
+            price,
+            stock,
+            image_url: imageUrl,
+            item_status: item.item_status || 'NORMAL',
+            has_model: item.has_model || false,
+          });
+        }
+        return items;
+      } catch (err) {
+        return batch.map(id => ({
+          item_id: String(id),
+          item_name: `Item ${id}`,
+          weight: 0,
+          price: 0,
+          stock: 0,
+          image_url: '',
+          item_status: 'NORMAL',
+          has_model: false,
+        }));
+      }
+    })
+  );
+
+  return batchResults.flat();
 }
 
 export async function boostItems(country: string, accessToken: string, itemIds: string[]): Promise<any> {
